@@ -7,6 +7,9 @@ Project management tool:
 Team expectations agreement:
 - https://docs.google.com/document/d/1ab_x_U-w4HQmU4NoWqpoSp3vwRfW6Q_SnA3XqQDGF5k/edit?usp=sharing
 
+Overleaf project:
+- https://www.overleaf.com/project/62272aef92c11e3981aa34d6
+
 Group members:
 - 247025 - Damian Garbala, gh: damienthewave
 - 246660 - Szymon Żmijewski, gh: Szimhead 
