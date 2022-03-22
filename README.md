@@ -2,7 +2,7 @@
 PBR22M7
 
 Project management tool:
-- Github Projects
+- [Github Projects](https://github.com/pwr-pbr22/M7/projects/1)
 
 Team expectations agreement:
 - https://docs.google.com/document/d/1ab_x_U-w4HQmU4NoWqpoSp3vwRfW6Q_SnA3XqQDGF5k/edit?usp=sharing
