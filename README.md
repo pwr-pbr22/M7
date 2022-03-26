@@ -2,7 +2,7 @@
 PBR22M7
 
 Project management tool:
-- [Github Projects](https://github.com/pwr-pbr22/M7/projects/1)
+- [Trello](https://trello.com/pbrm7/home) ([invitation](https://trello.com/invite/pbrm7/2efda818368280bc1540945a0cc805de))
 
 Team expectations agreement:
 - https://docs.google.com/document/d/1ab_x_U-w4HQmU4NoWqpoSp3vwRfW6Q_SnA3XqQDGF5k/edit?usp=sharing
