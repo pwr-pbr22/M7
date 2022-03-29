@@ -1,6 +1,7 @@
-import definitions
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, session
+from sqlalchemy.orm import sessionmaker
+
+import definitions
 
 Session = sessionmaker()
 
@@ -16,5 +17,5 @@ def prepare(connection_string):
     return True
 
 
-def getSession() -> session:
+def getSession():
     return Session()

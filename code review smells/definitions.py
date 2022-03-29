@@ -21,6 +21,7 @@ class AuthorAssociationEnum(enum.Enum):
     NONE = 5
 
 
+# noinspection SpellCheckingInspection
 class Review(Base):
     __tablename__ = 'review'
     id = Column(Integer, primary_key=True)
@@ -32,11 +33,18 @@ class Review(Base):
     author_association = Column(Enum(AuthorAssociationEnum))
     submitted_at = Column(DateTime)
 
+    def __str__(self) -> str:
+        return str(vars(self))
 
+
+# noinspection SpellCheckingInspection
 class User(Base):
     __tablename__ = 'user'
     id = Column(Integer, primary_key=True)
     login = Column(String)
+
+    def __str__(self) -> str:
+        return str(vars(self))
 
 
 pulls_assignees_table = Table('pulls_assignees', Base.metadata,
@@ -45,6 +53,7 @@ pulls_assignees_table = Table('pulls_assignees', Base.metadata,
                               )
 
 
+# noinspection SpellCheckingInspection
 class PullRequest(Base):
     __tablename__ = 'pull'
     id = Column(Integer, primary_key=True)
@@ -66,7 +75,11 @@ class PullRequest(Base):
     deletions = Column(Integer)
     changed_files = relationship('FileChange', back_populates='pull')
 
+    def __str__(self) -> str:
+        return str(vars(self))
 
+
+# noinspection SpellCheckingInspection
 class Repository(Base):
     __tablename__ = 'repo'
     id = Column(Integer, primary_key=True)
@@ -76,7 +89,11 @@ class Repository(Base):
     owner = relationship('User')
     pulls = relationship('PullRequest')
 
+    def __str__(self) -> str:
+        return str(vars(self))
 
+
+# noinspection SpellCheckingInspection
 class File(Base):
     __tablename__ = 'file'
     filename = Column('filename', String, primary_key=True)
@@ -86,7 +103,11 @@ class File(Base):
     lastDeleted = Column(DateTime)
     pulls = relationship('FileChange', back_populates="file")
 
+    def __str__(self) -> str:
+        return str(vars(self))
 
+
+# noinspection SpellCheckingInspection
 class FileChange(Base):
     __tablename__ = 'file_change'
     filename = Column(String, primary_key=True)
@@ -97,14 +118,21 @@ class FileChange(Base):
     additions = Column(Integer)
     deletions = Column(Integer)
     changes = Column(Integer)
-    __table_args__ = (ForeignKeyConstraint([repo_id, filename],
+    __table_args__ = (ForeignKeyConstraint((repo_id, filename),
                                            [File.repo_id, File.filename]),
                       {})
 
+    def __str__(self) -> str:
+        return str(vars(self))
 
+
+# noinspection SpellCheckingInspection
 class IssueForBug(Base):
     __tablename__ = "issue_for_bug"
     id = Column(Integer, primary_key=True)
     number = Column(Integer)
     repo_id = Column(Integer, ForeignKey('repo.id'))
     repo = relationship('Repository', foreign_keys=repo_id)
+
+    def __str__(self) -> str:
+        return str(vars(self))

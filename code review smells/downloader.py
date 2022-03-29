@@ -226,7 +226,8 @@ def downloadIssuesMarkedAsBug(project):
     for i in range(1, subpages + 1):
         _printStatus(f"Downloading issue subpage: {i} of {subpages}", (i - 1) / subpages, started)
         for issue in list(json.loads(
-                _fetch(f"https://api.github.com/repos/{project}/issues?labels=bug&state=closed&direction=asc&per_page=100&page={i}"))):
+                _fetch(f"https://api.github.com/repos/{project}/issues"
+                       f"?labels=bug&state=closed&direction=asc&per_page=100&page={i}"))):
             dbsession.merge(IssueForBug(
                 id=issue["id"],
                 number=issue["number"],
