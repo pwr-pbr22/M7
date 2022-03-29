@@ -13,13 +13,12 @@ Overleaf project:
 Group members:
 - 247025 - Damian Garbala, gh: damienthewave
 - 246660 - Szymon Żmijewski, gh: Szimhead 
-- 236393 - Damian Jaworek, gh: damianjaworek
 - 246785 - Krzysztof Baciejowski, gh: baciejowski
 
 Initial team work organization:
 - Damian Garbala, Szymon Żmijewski:
   mutation testing based on ast, test generation, predictive mutation testing
-- Damian Jaworek, Krzysztof Baciejowski:
+- Krzysztof Baciejowski:
   code review smells, review smell and code smell corelation
 
 Coordinator role during weeks:
