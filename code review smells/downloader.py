@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import random
 import re
 import sys
 import time
@@ -10,7 +11,8 @@ import aiohttp
 import requests
 
 import db
-from definitions import User, PullRequest, Repository, AuthorAssociationEnum, Review, ReviewStatusesEnum
+from definitions import User, PullRequest, Repository, AuthorAssociationEnum, Review, ReviewStatusesEnum, File, \
+    FileChange, IssueForBug
 
 
 def cls():
@@ -18,24 +20,30 @@ def cls():
 
 
 def _countSubpages(url):
+    # TODO obsługiwać więcej tokenów
+    githubToken = random.choice(githubTokens)[0]
     pattern = re.compile('([0-9]+)>; rel="last"')
     request = requests.get(url, headers={"Authorization": f"token {githubToken}"})
     if request.status_code != 200:
         print(f"Failed to fetch the number of pages for {url}")
         return 0
-    repo = json.loads(request.text)[0]["base"]["repo"]
-    session = db.getSession()
-    session.merge(User(
-        id=repo["owner"]["id"],
-        login=repo["owner"]["login"]
-    ))
-    session.merge(Repository(
-        id=repo["id"],
-        name=repo["name"],
-        full_name=repo["full_name"],
-        owner_id=repo["owner"]["id"]
-    ))
-    session.close()
+    try:
+        repo = json.loads(request.text)[0]["base"]["repo"]
+        session = db.getSession()
+        session.merge(User(
+            id=repo["owner"]["id"],
+            login=repo["owner"]["login"]
+        ))
+        session.merge(Repository(
+            id=repo["id"],
+            name=repo["name"],
+            full_name=repo["full_name"],
+            owner_id=repo["owner"]["id"]
+        ))
+        session.commit()
+        session.close()
+    except Exception: pass
+    #przemilczmy jakość kodu w tym miejscu
     return int(pattern.search(request.headers["Link"]).group(1))
 
 
@@ -52,58 +60,63 @@ def _printStatus(general, overall: float, started):
 
 
 async def _fetch_pr(session: aiohttp.ClientSession, link: str):
-    try:
-        resp = await session.request('GET',
-                                     url=link,
-                                     headers={"Authorization": f"token {githubToken}"})
-        resp2 = await session.request('GET',
-                                      url=link + "/reviews",
-                                      headers={"Authorization": f"token {githubToken}"})
-        if resp.status == 403 or resp2.status == 403:
-            waiting = int(resp.headers["x-ratelimit-reset"]) - int(time.time()) + 60
-            print(f"\n[{datetime.now()}] Exceeded number of requests, waiting {waiting // 60}m{waiting % 60}s", end="")
+    # TODO obsługiwać więcej tokenów
+    githubToken = random.choice(githubTokens)[0]
+
+    async def _request():
+        pull_request = await session.request('GET',
+                                             url=link,
+                                             headers={"Authorization": f"token {githubToken}"})
+        reviews_request = await session.request('GET',
+                                                url=link + "/reviews",
+                                                headers={"Authorization": f"token {githubToken}"})
+        files_request = await session.request('GET',
+                                              url=link + "/files",
+                                              headers={"Authorization": f"token {githubToken}"})
+        if pull_request.status == 403 or reviews_request.status == 403 or files_request.status == 403:
+            waiting = int(files_request.headers["x-ratelimit-reset"]) - int(time.time()) + 60
+            print(f"\n[{datetime.now()}] Exceeded number of requests, waiting {waiting // 60}m{waiting % 60}s",
+                  end="")
             time.sleep(waiting)
             return await _fetch_pr(session, link)
-        elif resp.status > 400 or resp2.status > 400:
+        elif pull_request.status >= 400 or reviews_request.status >= 400 or files_request.status >= 400:
             print(f"\n[{datetime.now()}] Something went wrong\n"
-                  f"\tstatus:\t{resp.status}\n"
+                  f"\tstatus:\t{pull_request.status}/{reviews_request.status}/{files_request.status}\n"
                   f"\taddress:\t{link}\n"
                   f"\tnext request in 1 minute", end="")
             time.sleep(60)
             return await _fetch_pr(session, link)
+        return await pull_request.json(), await reviews_request.json(), await files_request.json()
 
-        response = await resp.json()
-        revs = await resp2.json()
-        dbsession = db.getSession()
+    def _add_pull_to_db():
         # pr user
         dbsession.merge(User(
-            id=response["user"]["id"],
-            login=response["user"]["login"]
+            id=pull["user"]["id"],
+            login=pull["user"]["login"]
         ))
         # pr assignee
-        if response["assignee"] is not None:
+        if pull["assignee"] is not None:
             dbsession.merge(User(
-                id=response["assignee"]["id"],
-                login=response["assignee"]["login"]
+                id=pull["assignee"]["id"],
+                login=pull["assignee"]["login"]
             ))
         # pr pull
         pr = PullRequest(
-            id=response["id"],
-            number=response["number"],
-            title=response["title"],
-            user_id=response["user"]["id"] if response["user"] is not None else None,
-            body=response["body"],
-            created_at=response["created_at"],
-            closed_at=response["closed_at"],
-            assignee_id=response["assignee"]["id"] if response["assignee"] is not None else None,
-            repository_id=response["base"]["repo"]["id"],
-            author_association=AuthorAssociationEnum[response["author_association"]],
-            merged=response["merged"],
-            additions=response["additions"],
-            deletions=response["deletions"],
-            changed_files=response["changed_files"])
+            id=pull["id"],
+            number=pull["number"],
+            title=pull["title"],
+            user_id=pull["user"]["id"] if pull["user"] is not None else None,
+            body=pull["body"],
+            created_at=pull["created_at"],
+            closed_at=pull["closed_at"],
+            assignee_id=pull["assignee"]["id"] if pull["assignee"] is not None else None,
+            repository_id=pull["base"]["repo"]["id"],
+            author_association=AuthorAssociationEnum[pull["author_association"]],
+            merged=pull["merged"],
+            additions=pull["additions"],
+            deletions=pull["deletions"])
         # pr assignees
-        for assignee in response["assignees"]:
+        for assignee in pull["assignees"]:
             user = User(
                 id=assignee["id"],
                 login=assignee["login"]
@@ -112,6 +125,8 @@ async def _fetch_pr(session: aiohttp.ClientSession, link: str):
             pr.assignees.append(user)
         dbsession.merge(pr)
         dbsession.commit()
+
+    def _add_revs_to_db():
         for review in revs:
             # rev user
             if review["user"] is not None:
@@ -122,14 +137,54 @@ async def _fetch_pr(session: aiohttp.ClientSession, link: str):
             # rev
             dbsession.merge(Review(
                 id=review["id"],
-                pull_id=response["id"],
+                pull_id=pull["id"],
                 user_id=review["user"]["id"] if review["user"] is not None else None,
                 body=review["body"],
                 state=ReviewStatusesEnum[review["state"]],
                 author_association=AuthorAssociationEnum[review["author_association"]],
                 submitted_at=review["submitted_at"]
             ))
+
+    def _add_files_to_db():
+        pr = dbsession.query(PullRequest).get(pull["id"])
+        for file in files_changed:
+            # add or update files to db
+            existing = dbsession.query(File).get(file["filename"])
+            if existing is None:
+                newFile = File(filename=file["filename"])
+                if file["status"] == "deleted":
+                    newFile.lastDeleted = pr.closed_at
+                elif file["status"] == "added":
+                    newFile.firstMerged = pr.closed_at
+                dbsession.add(newFile)
+                existing = newFile
+            else:
+                if file["status"] == "deleted" and (
+                        existing.lastDeleted is None or existing.lastDeleted < pr.closed_at):
+                    existing.lastDeleted = pr.closed_at
+                elif file["status"] == "added" and (
+                        existing.firstMerged is None or existing.firstMerged > pr.closed_at):
+                    existing.firstMerged = pr.closed_at
+            # add to info on pull
+            change = FileChange(additions=file["additions"],
+                                deletions=file["deletions"],
+                                changes=file["changes"]
+                                )
+            change.file = existing
+            change.pull = pr
+
+    try:
+        pull, revs, files_changed = await _request()
+
+        dbsession = db.getSession()
+
+        _add_pull_to_db()
+        _add_revs_to_db()
         dbsession.commit()
+
+        _add_files_to_db()
+        dbsession.commit()
+
         dbsession.close()
     except Exception as e:
         print(f"\n[{datetime.now()}] Something went wrong\n"
@@ -156,7 +211,31 @@ async def downloadProjectPulls(project):
         _printStatus(f"Downloading subpage: {i} of {subpages}", i / subpages, started)
 
 
+def downloadIssuesMarkedAsBug(project):
+    dbsession = db.getSession()
+    started = datetime.now()
+    repository = dbsession.query(Repository).filter(Repository.full_name == project).first()
+    if repository is None:
+        print("Repository is unknown")
+        return
+    subpages = _countSubpages(
+        f"https://api.github.com/repos/{project}/issues?labels=bug&state=closed&direction=asc&per_page=100")
+    for i in range(1, subpages + 1):
+        _printStatus(f"Downloading issue subpage: {i} of {subpages}", (i - 1) / subpages, started)
+        for issue in list(json.loads(_fetch(f"https://api.github.com/repos/{project}/issues?labels=bug&state=closed&direction=asc&per_page=100&page={i}"))):
+            dbsession.merge(IssueForBug(
+                id=issue["id"],
+                number=issue["number"],
+                repo_id=repository.id
+            ))
+            dbsession.commit()
+        _printStatus(f"Downloading subpage: {i} of {subpages}", i / subpages, started)
+    dbsession.close()
+
+
 def _fetch(url):
+    # TODO obsługiwać więcej tokenów
+    githubToken = random.choice(githubTokens)[0]
     try:
         request = requests.get(url, headers={"Authorization": f"token {githubToken}"},
                                timeout=10)
@@ -182,6 +261,12 @@ def _fetch(url):
 
 
 if __name__ == '__main__':
-    githubToken = sys.argv[1]
-    if db.prepare(sys.argv[2]):
-        asyncio.run(downloadProjectPulls(sys.argv[3]))
+    if len(sys.argv) < 4:
+        print("Not sufficient args")
+    else:
+        githubTokens = list(map(lambda token: (token, True, datetime.now()), sys.argv[3:]))
+
+        if db.prepare(sys.argv[1]):
+            asyncio.run(downloadProjectPulls(sys.argv[2]))
+            #kolejność ma znaczenie gdy repozytorium nie znajduje się w bazie
+            downloadIssuesMarkedAsBug(sys.argv[2])

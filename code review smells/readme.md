@@ -1,7 +1,7 @@
 # Downloader
 
 1. install necessary packages and prepare postgresql db
-2. invoke `py .\downloader.py <github_token> <database_connection_sting> <repository_full_name>`, e.g. `py .\downloader.py ghp_vyz3FEONhVYgQWagxxxxxxxxxxxxxxxxxxxx postgresql://postgres:tajne_haselko@localhost:5432/pbr desktop/desktop`
+2. invoke `py .\downloader.py <database_connection_sting> <repository_full_name> <github_token(s)>`, e.g. `py .\downloader.py postgresql://postgres:tajne_haselko@localhost:5432/pbr desktop/desktop ghp_vyz3FEONhVYgQWagxxxxxxxxxxxxxxxxxxxx  ghp_vyz3FEONhVYgQWagyyyyyyyyyyyyyyyyyyyy`
 
 # Evaluator
 
