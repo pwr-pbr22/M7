@@ -267,7 +267,7 @@ if __name__ == '__main__':
         githubTokens = list(map(lambda token: (token, True, datetime.now()), sys.argv[3:]))
 
         if db.prepare(sys.argv[1]):
-            #asyncio.run(downloadProjectPulls(sys.argv[2]))
+            asyncio.run(downloadProjectPulls(sys.argv[2]))
             #kolejność ma znaczenie gdy repozytorium nie znajduje się w bazie
             downloadIssuesMarkedAsBug(sys.argv[2])
         else:
