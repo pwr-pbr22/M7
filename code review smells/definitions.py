@@ -1,6 +1,6 @@
 import enum
 
-from sqlalchemy import ForeignKey, Column, Integer, String, Boolean, Enum, DateTime, Table
+from sqlalchemy import ForeignKey, Column, Integer, String, Boolean, Enum, DateTime, Table, ForeignKeyConstraint
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
@@ -80,6 +80,8 @@ class Repository(Base):
 class File(Base):
     __tablename__ = 'file'
     filename = Column('filename', String, primary_key=True)
+    repo_id = Column(Integer, ForeignKey('repo.id'), primary_key=True)
+    repo = relationship('Repository', foreign_keys=repo_id)
     firstMerged = Column(DateTime)
     lastDeleted = Column(DateTime)
     pulls = relationship('FileChange', back_populates="file")
@@ -87,13 +89,17 @@ class File(Base):
 
 class FileChange(Base):
     __tablename__ = 'file_change'
-    filename = Column(String, ForeignKey('file.filename'), primary_key=True)
+    filename = Column(String, primary_key=True)
+    repo_id = Column(Integer, primary_key=True)
     pull_id = Column(Integer, ForeignKey('pull.id'), primary_key=True)
     file = relationship("File", back_populates="pulls")
     pull = relationship("PullRequest", back_populates="changed_files")
     additions = Column(Integer)
     deletions = Column(Integer)
     changes = Column(Integer)
+    __table_args__ = (ForeignKeyConstraint([repo_id, filename],
+                                           [File.repo_id, File.filename]),
+                      {})
 
 
 class IssueForBug(Base):

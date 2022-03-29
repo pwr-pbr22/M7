@@ -149,9 +149,9 @@ async def _fetch_pr(session: aiohttp.ClientSession, link: str):
         pr = dbsession.query(PullRequest).get(pull["id"])
         for file in files_changed:
             # add or update files to db
-            existing = dbsession.query(File).get(file["filename"])
+            existing = dbsession.query(File).get({"filename": file["filename"], "repo_id": pr.repository_id})
             if existing is None:
-                newFile = File(filename=file["filename"])
+                newFile = File(filename=file["filename"], repo_id=pr.repository_id)
                 if file["status"] == "deleted":
                     newFile.lastDeleted = pr.closed_at
                 elif file["status"] == "added":
@@ -267,6 +267,8 @@ if __name__ == '__main__':
         githubTokens = list(map(lambda token: (token, True, datetime.now()), sys.argv[3:]))
 
         if db.prepare(sys.argv[1]):
-            asyncio.run(downloadProjectPulls(sys.argv[2]))
+            #asyncio.run(downloadProjectPulls(sys.argv[2]))
             #kolejność ma znaczenie gdy repozytorium nie znajduje się w bazie
             downloadIssuesMarkedAsBug(sys.argv[2])
+        else:
+            print("Can't connect to db")
