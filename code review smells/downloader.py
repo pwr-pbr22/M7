@@ -42,8 +42,9 @@ def _countSubpages(url):
         ))
         session.commit()
         session.close()
-    except Exception: pass
-    #przemilczmy jakość kodu w tym miejscu
+    except Exception:
+        pass
+    # przemilczmy jakość kodu w tym miejscu
     return int(pattern.search(request.headers["Link"]).group(1))
 
 
@@ -166,12 +167,14 @@ async def _fetch_pr(session: aiohttp.ClientSession, link: str):
                         existing.firstMerged is None or existing.firstMerged > pr.closed_at):
                     existing.firstMerged = pr.closed_at
             # add to info on pull
-            change = FileChange(additions=file["additions"],
-                                deletions=file["deletions"],
-                                changes=file["changes"]
-                                )
-            change.file = existing
-            change.pull = pr
+            if dbsession.query(FileChange).get(
+                    {"filename": existing.filename, "repo_id": existing.repo_id, "pull_id": pr.id}) is None:
+                change = FileChange(additions=file["additions"],
+                                    deletions=file["deletions"],
+                                    changes=file["changes"]
+                                    )
+                change.file = existing
+                change.pull = pr
 
     try:
         pull, revs, files_changed = await _request()
@@ -222,7 +225,8 @@ def downloadIssuesMarkedAsBug(project):
         f"https://api.github.com/repos/{project}/issues?labels=bug&state=closed&direction=asc&per_page=100")
     for i in range(1, subpages + 1):
         _printStatus(f"Downloading issue subpage: {i} of {subpages}", (i - 1) / subpages, started)
-        for issue in list(json.loads(_fetch(f"https://api.github.com/repos/{project}/issues?labels=bug&state=closed&direction=asc&per_page=100&page={i}"))):
+        for issue in list(json.loads(
+                _fetch(f"https://api.github.com/repos/{project}/issues?labels=bug&state=closed&direction=asc&per_page=100&page={i}"))):
             dbsession.merge(IssueForBug(
                 id=issue["id"],
                 number=issue["number"],
@@ -268,7 +272,7 @@ if __name__ == '__main__':
 
         if db.prepare(sys.argv[1]):
             asyncio.run(downloadProjectPulls(sys.argv[2]))
-            #kolejność ma znaczenie gdy repozytorium nie znajduje się w bazie
+            # kolejność ma znaczenie gdy repozytorium nie znajduje się w bazie
             downloadIssuesMarkedAsBug(sys.argv[2])
         else:
             print("Can't connect to db")
