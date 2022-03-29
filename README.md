@@ -26,5 +26,6 @@ Coordinator role during weeks:
 - 3-5: Krzysztof Baciejowski
 - 6-8: Damian Garbala
 - 9-11: Szymon Żmijewski
-- 12-13: Damian Jaworek
-- 14-15: Krzysztof Baciejowski/Damian Garbala
+- 12: Krzysztof Baciejowski
+- 13: Damian Garbala
+- 14: Szymon Żmijewski
