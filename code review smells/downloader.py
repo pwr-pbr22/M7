@@ -45,7 +45,7 @@ def _countSubpages(url):
     except Exception:
         pass
     # przemilczmy jakość kodu w tym miejscu
-    return int(pattern.search(request.headers["Link"]).group(1))
+    return int(pattern.search(request.headers["Link"]).group(1)) if "Link" in request.headers else 1
 
 
 def _printStatus(general, overall: float, started):
@@ -203,7 +203,7 @@ async def downloadProjectPulls(project):
     subpages = _countSubpages(
         f"https://api.github.com/repos/{project}/pulls?state=closed&direction=asc&per_page=100")
     for i in range(1, subpages + 1):
-        _printStatus(f"Downloading subpage: {i} of {subpages}", (i - 1) / subpages, started)
+        _printStatus(f"Downloading PR subpage: {i} of {subpages} (≈{subpages*300} requests)", (i - 1) / subpages, started)
         links = list(map(lambda entry: entry["url"], json.loads(_fetch(
             f"https://api.github.com/repos/{project}/pulls?state=closed&direction=asc&per_page=100&page={i}"))))
         async with aiohttp.ClientSession() as session:
@@ -211,7 +211,8 @@ async def downloadProjectPulls(project):
             for link in links:
                 tasks.append(_fetch_pr(session, link))
                 await asyncio.gather(*tasks, return_exceptions=True)
-        _printStatus(f"Downloading subpage: {i} of {subpages}", i / subpages, started)
+            await session.close()
+        _printStatus(f"Downloading PR subpage: {i} of {subpages} (≈{subpages*300} requests)", i / subpages, started)
 
 
 def downloadIssuesMarkedAsBug(project):
@@ -224,7 +225,7 @@ def downloadIssuesMarkedAsBug(project):
     subpages = _countSubpages(
         f"https://api.github.com/repos/{project}/issues?labels=bug&state=closed&direction=asc&per_page=100")
     for i in range(1, subpages + 1):
-        _printStatus(f"Downloading issue subpage: {i} of {subpages}", (i - 1) / subpages, started)
+        _printStatus(f"Downloading issue subpage: {i} of {subpages} (≈{subpages*100} requests)", (i - 1) / subpages, started)
         for issue in list(json.loads(
                 _fetch(f"https://api.github.com/repos/{project}/issues"
                        f"?labels=bug&state=closed&direction=asc&per_page=100&page={i}"))):
@@ -234,7 +235,7 @@ def downloadIssuesMarkedAsBug(project):
                 repo_id=repository.id
             ))
             dbsession.commit()
-        _printStatus(f"Downloading subpage: {i} of {subpages}", i / subpages, started)
+        _printStatus(f"Downloading subpage: {i} of {subpages} (≈{subpages*100} requests)", i / subpages, started)
     dbsession.close()
 
 
