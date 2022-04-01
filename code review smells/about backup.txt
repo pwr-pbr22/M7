@@ -1,0 +1,1 @@
+C:\Program Files\PostgreSQL\14\bin\pg_dump.exe --file "C:\\Projects\\pbr\\CODERE~1\\db" --host "localhost" --port "5432" --username "postgres" --no-password --verbose --role "postgres" --format=c --blobs --compress "9" --encoding "UTF8" "pbr"
