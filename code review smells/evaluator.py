@@ -4,7 +4,7 @@ from datetime import datetime
 from functools import reduce
 from typing import Callable, List
 
-from sqlalchemy import and_, or_, not_, sql, tuple_, text
+from sqlalchemy import and_, or_, not_, sql, tuple_, text, func
 from sqlalchemy.orm import Query
 
 import db
@@ -51,7 +51,8 @@ def _filechangesRemovingBugs(session, repo: Repository) -> Query:
              or_(
                  PullRequest.deletions > 0,
                  PullRequest.additions > 0)
-             )
+             ),
+        PullRequest.merged
     )
     with_keywords = considered.filter(
         and_(
@@ -161,7 +162,8 @@ def lackOfCodeReview(session, repo: Repository) -> Results:
              or_(
                  PullRequest.deletions > 0,
                  PullRequest.additions > 0)
-             )
+             ),
+        PullRequest.merged
     )
 
     smelly = considered.except_(considered.join(PullRequest.reviews).filter(PullRequest.user_id != Review.user_id))
@@ -174,7 +176,8 @@ def missingPrDescription(session, repo: Repository) -> Results:
              or_(
                  PullRequest.deletions > 0,
                  PullRequest.additions > 0)
-             )
+             ),
+        PullRequest.merged
     )
 
     smelly = considered.filter(
@@ -202,11 +205,26 @@ def largeChangesets(session, repo: Repository) -> Results:
              or_(
                  PullRequest.deletions > 0,
                  PullRequest.additions > 0)
-             )
+             ),
+        PullRequest.merged
     )
 
     smelly = considered.filter(PullRequest.deletions + PullRequest.additions > 500)
     return Results("Large changeset", repo, considered, smelly)
+
+
+def sleepingReviews(session, repo: Repository) -> Results:
+    considered = session.query(PullRequest).filter(
+        and_(PullRequest.repository_id == repo.id,
+             or_(
+                 PullRequest.deletions > 0,
+                 PullRequest.additions > 0)
+             ),
+        PullRequest.merged
+    )
+
+    smelly = considered.filter((PullRequest.closed_at-PullRequest.created_at) >= func.make_interval(0, 0, 0, 2))
+    return Results("Sleeping reviews", repo, considered, smelly)
 
 
 def union(session, repo: Repository, evaluators: list) -> Results:
@@ -215,7 +233,8 @@ def union(session, repo: Repository, evaluators: list) -> Results:
              or_(
                  PullRequest.deletions > 0,
                  PullRequest.additions > 0)
-             )
+             ),
+        PullRequest.merged
     )
 
     smelly = session.query(PullRequest).filter(sql.false())
@@ -233,7 +252,8 @@ def intersection(session, repo: Repository, evaluators: list) -> Results:
              or_(
                  PullRequest.deletions > 0,
                  PullRequest.additions > 0)
-             )
+             ),
+        PullRequest.merged
     )
 
     smelly = session.query(PullRequest)
@@ -289,6 +309,7 @@ if __name__ == "__main__":
         evaluate(sys.argv[2], lackOfCodeReview)
         evaluate(sys.argv[2], missingPrDescription)
         evaluate(sys.argv[2], largeChangesets)
+        evaluate(sys.argv[2], sleepingReviews)
         evaluate(sys.argv[2], union, [lackOfCodeReview, missingPrDescription, largeChangesets])
         evaluate(sys.argv[2], intersection, [lackOfCodeReview, missingPrDescription, largeChangesets])
         dbsession = db.getSession()
