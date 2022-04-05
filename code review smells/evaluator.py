@@ -221,6 +221,28 @@ def sleepingReviews(session, repo: Repository) -> Results:
     return Results("Sleeping reviews", repo, considered, smelly)
 
 
+def pingPong(session, repo: Repository) -> Results:
+    considered = session.query(PullRequest).filter(
+        and_(PullRequest.repository_id == repo.id,
+             or_(
+                 PullRequest.deletions > 0,
+                 PullRequest.additions > 0)
+             ),
+        PullRequest.merged
+    )
+
+    reviewers = []
+    smelly = []
+    for c in considered:
+        for r in c.reviews:
+            if r.user in reviewers:
+                smelly.append(c)
+            else:
+                reviewers.append(r.user)
+
+    return Results("Ping-pong reviews", repo, considered, smelly)
+
+
 def union(session, repo: Repository, evaluators: list) -> Results:
     considered = session.query(PullRequest).filter(
         and_(PullRequest.repository_id == repo.id,
