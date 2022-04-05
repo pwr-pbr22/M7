@@ -2,7 +2,7 @@ import os
 import sys
 from datetime import datetime
 from functools import reduce
-from typing import Callable, List
+from typing import Callable, List, Optional
 
 from sqlalchemy import and_, or_, not_, sql, tuple_, text, func
 from sqlalchemy.orm import Query
@@ -42,107 +42,101 @@ def cls():
     os.system('cls' if os.name == 'nt' else 'clear')
 
 
-# returns query with Filechange objects which
-# were changed by pr with keywords such as "bug", "fix", "error"
-# or were referencing to issue tagged as bugs
-def _filechangesRemovingBugs(session, repo: Repository) -> Query:
-    considered = session.query(FileChange).join(PullRequest).filter(
-        and_(PullRequest.repository_id == repo.id,
-             or_(
-                 PullRequest.deletions > 0,
-                 PullRequest.additions > 0)
-             ),
-        PullRequest.merged
-    )
-    with_keywords = considered.filter(
-        and_(
-            FileChange.filename.like("%.%"),  # files only no folders
-            FileChange.filename.notilike("%.json"),  # ignore config files and similar
-            FileChange.filename.notilike("%.yml"),
-            FileChange.filename.notilike("%.md"),
-            FileChange.filename.notilike("%.gitignore"),
-            FileChange.filename.notilike("%.lock"),
-            PullRequest.title.notilike("%better%"),  # remove some false-positives
-            PullRequest.body.notilike("%better%"),
-            or_(  # check for keywords
-                PullRequest.title.ilike("%bug%"),
-                PullRequest.title.ilike("%error%"),
-                PullRequest.title.ilike("%fix%"),
-                PullRequest.body.ilike("%bug%"),
-                PullRequest.body.ilike("%error%"),
-                PullRequest.body.ilike("%fix%")
-            )
-        )
-    )
-    bugsolving_filechanges = session.execute(text(f"""
-        SELECT DISTINCT
-            filename, pull_id
-        FROM 
-        (
-            (
-                SELECT
-                    fc.filename, fc.pull_id, regexp_matches(pr.title, '#(\\d+)', 'g') AS "matches"
-                FROM
-                    FILE_CHANGE AS "fc" JOIN PULL AS "pr" ON fc.pull_id=pr.id
-                WHERE
-                        pr.repository_id = {repo.id}
-                    AND
-                        -- files only no folders
-                        fc.filename LIKE '%.%'
-                    AND
-                        -- useless files
-                        fc.filename NOT LIKE '%.json'
-                    AND
-                        fc.filename NOT LIKE '%.yml'
-                    AND
-                        fc.filename NOT LIKE '%.md'
-                    AND
-                        fc.filename NOT LIKE '%.gitignore'
-                    AND
-                        fc.filename NOT LIKE '%.lock'
-            )
-            UNION
-            (
-                SELECT
-                    fc.filename, fc.pull_id, regexp_matches(pr.body, '#(\\d+)', 'g') AS "matches"
-                FROM
-                    FILE_CHANGE AS "fc" JOIN PULL AS "pr" ON fc.pull_id=pr.id
-                WHERE
-                        pr.repository_id = {repo.id}
-                    AND
-                        -- files only no folders
-                        fc.filename LIKE '%.%'
-                    AND
-                        -- useless files
-                        fc.filename NOT LIKE '%.json'
-                    AND
-                        fc.filename NOT LIKE '%.yml'
-                    AND
-                        fc.filename NOT LIKE '%.md'
-                    AND
-                        fc.filename NOT LIKE '%.gitignore'
-                    AND
-                        fc.filename NOT LIKE '%.lock'
-            )
-        ) AS s 
-    WHERE
-        CAST(matches[1] AS INTEGER) IN (SELECT number FROM issue_for_bug);"""))
-    referencing = considered.filter(
-        tuple_(FileChange.filename, FileChange.pull_id).in_(bugsolving_filechanges)
-    )
-    return referencing.union(with_keywords)
+def __createFunctionsInDb(session):
+    session.execute(f"""
+        CREATE OR REPLACE FUNCTION prFixesBug(pr_id integer) RETURNS boolean AS $$
+            DECLARE
+                pr record;
+                nt text;
+            BEGIN
+                -- check id
+                IF 
+                    (SELECT EXISTS(SELECT id FROM Issue_for_bug where id=pr_id))
+                THEN
+                    RETURN true;
+                END IF;
+                
+                -- check content
+                SELECT * INTO pr FROM Pull WHERE Pull.id=pr_id;
+                IF
+                        pr.title ILIKE '%bug%'
+                    OR
+                        pr.title ILIKE '%error%'
+                    OR
+                        pr.title ILIKE '%fix%'
+                    OR
+                        pr.body ILIKE '%bug%'
+                    OR
+                        pr.body ILIKE '%error%'
+                    OR
+                        pr.body ILIKE '%fix%'
+                THEN
+                    RETURN true;
+                END IF;
+                
+                -- check referenced
+                IF
+                (
+                    SELECT EXISTS
+                    (
+                        SELECT 
+                            * 
+                        FROM 
+                        (
+                            (
+                                SELECT pr.id, regexp_matches(pr.title, '#(\\d+)', 'g') AS "matches"
+                            )
+                            UNION
+                            (
+                                SELECT pr.id, regexp_matches(pr.body, '#(\\d+)', 'g') AS "matches"
+                            )
+                        ) AS "mi"
+                        WHERE
+                            CAST(mi.matches[1] AS INTEGER) IN (SELECT number FROM issue_for_bug)
+                    )
+                )
+                THEN
+                    RETURN true;
+                END IF;
+                
+                RETURN false;
+            END;
+        $$
+        Language plpgsql;
 
 
-def _getNextFileChange(session, file_change: FileChange, source: Query = None) -> FileChange:
-    if source is None:
-        source = session.query(FileChange)
-    return source.filter(
-        and_(
-            FileChange.repo_id == file_change.repo_id,
-            FileChange.filename == file_change.filename
-        )
-    ).join(PullRequest). \
-        filter(PullRequest.closed_at > file_change.pull.closed_at).order_by(PullRequest.closed_at).first()
+        CREATE OR REPLACE FUNCTION nextFixesBug(repo_id integer, filename text, starting timestamp) RETURNS boolean AS $$
+            DECLARE
+                pr_id integer;
+            BEGIN
+                SELECT INTO pr_id
+                    p.id
+                FROM
+                    File_change AS "fc" 
+                    JOIN Pull AS "p" ON fc.pull_id=p.id
+                WHERE
+                    p.repository_id = $1 AND
+                    fc.filename = $2 AND
+                    p.closed_at > $3
+                ORDER BY
+                    p.closed_at
+                LIMIT 1;
+                
+                IF 
+                    pr_id IS NULL
+                THEN
+                    RETURN null;
+                ELSE
+                    RETURN prFixesBug(pr_id);
+                END IF;
+            END;
+        $$
+        Language plpgsql;
+    """)
+
+
+def _nextFileChangeFixesBug(session,  repo: Repository, filename: str, starting: datetime) -> Optional[bool]:
+    return session.execute(f"""SELECT nextFixesBug({repo.id}, '{filename}', '{starting}'::TIMESTAMP)""").first()[0]
 
 
 def evaluate(repo: str, evaluator: Callable, *args) -> None:
@@ -270,7 +264,7 @@ def calcImpact(session, repo: Repository, evaluator: Callable, evaluator_args=No
         evaluator(session, repo) if evaluator_args is None else evaluator(session, repo, evaluator_args)
     smelly: List[PullRequest] = evaluation_results.smelly.all()
     ok: List[PullRequest] = evaluation_results.considered.except_(evaluation_results.smelly).all()
-    filechangesRemovingBugs = _filechangesRemovingBugs(session, repo)
+    #filechangesRemovingBugs = _filechangesRemovingBugs(session, repo)
 
     counter = 0.0
     startTime = datetime.now()
@@ -290,8 +284,7 @@ def calcImpact(session, repo: Repository, evaluator: Callable, evaluator_args=No
         nonlocal counter
         counter += 1
         printProgress()
-        if any(_getNextFileChange(session, file_change) == _getNextFileChange(session, file_change,
-                                                                              filechangesRemovingBugs) for file_change
+        if any(_nextFileChangeFixesBug(session,repo,file_change.filename,file_change.pull.closed_at) for file_change
                in filechanges):
             return 1
         return 0
@@ -310,11 +303,12 @@ if __name__ == "__main__":
         evaluate(sys.argv[2], missingPrDescription)
         evaluate(sys.argv[2], largeChangesets)
         evaluate(sys.argv[2], sleepingReviews)
-        evaluate(sys.argv[2], union, [lackOfCodeReview, missingPrDescription, largeChangesets])
-        evaluate(sys.argv[2], intersection, [lackOfCodeReview, missingPrDescription, largeChangesets])
+        evaluate(sys.argv[2], union, [lackOfCodeReview, missingPrDescription, largeChangesets, sleepingReviews])
+        evaluate(sys.argv[2], intersection, [lackOfCodeReview, missingPrDescription, largeChangesets, sleepingReviews])
         dbsession = db.getSession()
         repo_obj: Repository = dbsession.query(Repository).filter(Repository.full_name == sys.argv[2]).first()
         if repo_obj is not None:
+            __createFunctionsInDb(dbsession)
             print()
             print(
                 f"Prawdopodobieństwa, że dla przynajmniej jednego z plików zmodyfikowanych "
@@ -325,15 +319,18 @@ if __name__ == "__main__":
             print(f"{'Lack of code review'.ljust(30)}{(res[0] * 100):.2f}%\t {(res[1] * 100):.2f}%")
             res = calcImpact(dbsession, repo_obj, missingPrDescription)
             cll()
+            print(f"{'Sleeping review'.ljust(30)}{(res[0] * 100):.2f}%\t {(res[1] * 100):.2f}%")
+            res = calcImpact(dbsession, repo_obj, sleepingReviews)
+            cll()
             print(f"{'Missing PR description'.ljust(30)}{(res[0] * 100):.2f}%\t {(res[1] * 100):.2f}%")
             res = calcImpact(dbsession, repo_obj, largeChangesets)
             cll()
             print(f"{'Large changesets'.ljust(30)}{(res[0] * 100):.2f}%\t {(res[1] * 100):.2f}%")
-            res = calcImpact(dbsession, repo_obj, union, [lackOfCodeReview, missingPrDescription, largeChangesets])
+            res = calcImpact(dbsession, repo_obj, union, [lackOfCodeReview, missingPrDescription, largeChangesets, sleepingReviews])
             cll()
             print(f"{'One of aformentioned'.ljust(30)}{(res[0] * 100):.2f}%\t {(res[1] * 100):.2f}%")
             res = calcImpact(dbsession, repo_obj, intersection,
-                             [lackOfCodeReview, missingPrDescription, largeChangesets])
+                             [lackOfCodeReview, missingPrDescription, largeChangesets, sleepingReviews])
             cll()
             print(f"{'All of aforementioned'.ljust(30)}{(res[0] * 100):.2f}%\t {(res[1] * 100):.2f}%")
         dbsession.close()
