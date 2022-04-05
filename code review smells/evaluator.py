@@ -92,7 +92,7 @@ def __createFunctionsInDb(session):
                             )
                         ) AS "mi"
                         WHERE
-                            CAST(mi.matches[1] AS INTEGER) IN (SELECT number FROM issue_for_bug)
+                            CAST(mi.matches[1] AS INTEGER) IN (SELECT number FROM issue_for_bug WHERE repo_id=pr.repository_id)
                     )
                 )
                 THEN
