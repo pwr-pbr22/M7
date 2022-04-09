@@ -135,7 +135,7 @@ def __createFunctionsInDb(session):
     """)
 
 
-def _nextFileChangeFixesBug(session,  repo: Repository, filename: str, starting: datetime) -> Optional[bool]:
+def _nextFileChangeFixesBug(session, repo: Repository, filename: str, starting: datetime) -> Optional[bool]:
     return session.execute(f"""SELECT nextFixesBug({repo.id}, '{filename}', '{starting}'::TIMESTAMP)""").first()[0]
 
 
@@ -151,28 +151,14 @@ def evaluate(repo: str, evaluator: Callable, *args) -> None:
 
 
 def lackOfCodeReview(session, repo: Repository) -> Results:
-    considered = session.query(PullRequest).filter(
-        and_(PullRequest.repository_id == repo.id,
-             or_(
-                 PullRequest.deletions > 0,
-                 PullRequest.additions > 0)
-             ),
-        PullRequest.merged
-    )
+    considered = get_considered_prs(repo, session)
 
     smelly = considered.except_(considered.join(PullRequest.reviews).filter(PullRequest.user_id != Review.user_id))
     return Results("Lack of code review", repo, considered, smelly)
 
 
 def missingPrDescription(session, repo: Repository) -> Results:
-    considered = session.query(PullRequest).filter(
-        and_(PullRequest.repository_id == repo.id,
-             or_(
-                 PullRequest.deletions > 0,
-                 PullRequest.additions > 0)
-             ),
-        PullRequest.merged
-    )
+    considered = get_considered_prs(repo, session)
 
     smelly = considered.filter(
         or_(
@@ -194,35 +180,47 @@ def missingPrDescription(session, repo: Repository) -> Results:
 
 
 def largeChangesets(session, repo: Repository) -> Results:
-    considered = session.query(PullRequest).filter(
-        and_(PullRequest.repository_id == repo.id,
-             or_(
-                 PullRequest.deletions > 0,
-                 PullRequest.additions > 0)
-             ),
-        PullRequest.merged
-    )
+    considered = get_considered_prs(repo, session)
 
     smelly = considered.filter(PullRequest.deletions + PullRequest.additions > 500)
     return Results("Large changeset", repo, considered, smelly)
 
 
 def sleepingReviews(session, repo: Repository) -> Results:
-    considered = session.query(PullRequest).filter(
-        and_(PullRequest.repository_id == repo.id,
-             or_(
-                 PullRequest.deletions > 0,
-                 PullRequest.additions > 0)
-             ),
-        PullRequest.merged
-    )
+    considered = get_considered_prs(repo, session)
 
-    smelly = considered.filter((PullRequest.closed_at-PullRequest.created_at) >= func.make_interval(0, 0, 0, 2))
+    smelly = considered.filter((PullRequest.closed_at - PullRequest.created_at) >= func.make_interval(0, 0, 0, 2))
     return Results("Sleeping reviews", repo, considered, smelly)
 
 
-def pingPong(session, repo: Repository) -> Results:
-    considered = session.query(PullRequest).filter(
+def review_buddies(session, repo: Repository) -> Results:
+    considered_prs = get_considered_prs(repo, session)
+
+    smelly_id_pairs = session.execute("""
+        SELECT pull.user_id AS pull_requester, review.user_id AS reviewer
+        FROM pull
+             JOIN review ON pull.id = review.pull_id
+             JOIN (SELECT pull.user_id pull_user_id, COUNT(*) total_reviews
+                   FROM pull
+                        JOIN review ON pull.id = review.pull_id
+                   WHERE pull.repository_id = 6786166
+                     AND pull.user_id <> review.user_id
+                   GROUP BY pull.user_id) AS user_total_reviews ON user_total_reviews.pull_user_id = pull.user_id
+        WHERE pull.repository_id = 6786166
+          AND pull.user_id <> review.user_id
+        GROUP BY pull.user_id, review.user_id, user_total_reviews.total_reviews
+        HAVING CAST(COUNT(*) AS DECIMAL) / total_reviews > 0.5
+           AND total_reviews > 50;
+    """)
+
+    conditions = [and_(PullRequest.user_id == pruid, Review.user_id == revuid) for (pruid, revuid) in smelly_id_pairs]
+    smelly = considered_prs.join(Review).where(or_(*conditions))
+
+    return Results("Review Buddies", repo, considered_prs, smelly)
+
+
+def get_considered_prs(repo, session):
+    return session.query(PullRequest).filter(
         and_(PullRequest.repository_id == repo.id,
              or_(
                  PullRequest.deletions > 0,
@@ -230,6 +228,10 @@ def pingPong(session, repo: Repository) -> Results:
              ),
         PullRequest.merged
     )
+
+
+def pingPong(session, repo: Repository) -> Results:
+    considered = get_considered_prs(repo, session)
 
     reviewers = []
     smelly = []
@@ -244,14 +246,7 @@ def pingPong(session, repo: Repository) -> Results:
 
 
 def union(session, repo: Repository, evaluators: list) -> Results:
-    considered = session.query(PullRequest).filter(
-        and_(PullRequest.repository_id == repo.id,
-             or_(
-                 PullRequest.deletions > 0,
-                 PullRequest.additions > 0)
-             ),
-        PullRequest.merged
-    )
+    considered = get_considered_prs(repo, session)
 
     smelly = session.query(PullRequest).filter(sql.false())
     for evaluator in evaluators:
@@ -263,14 +258,7 @@ def union(session, repo: Repository, evaluators: list) -> Results:
 
 
 def intersection(session, repo: Repository, evaluators: list) -> Results:
-    considered = session.query(PullRequest).filter(
-        and_(PullRequest.repository_id == repo.id,
-             or_(
-                 PullRequest.deletions > 0,
-                 PullRequest.additions > 0)
-             ),
-        PullRequest.merged
-    )
+    considered = get_considered_prs(repo, session)
 
     smelly = session.query(PullRequest)
     for evaluator in evaluators:
@@ -286,7 +274,7 @@ def calcImpact(session, repo: Repository, evaluator: Callable, evaluator_args=No
         evaluator(session, repo) if evaluator_args is None else evaluator(session, repo, evaluator_args)
     smelly: List[PullRequest] = evaluation_results.smelly.all()
     ok: List[PullRequest] = evaluation_results.considered.except_(evaluation_results.smelly).all()
-    #filechangesRemovingBugs = _filechangesRemovingBugs(session, repo)
+    # filechangesRemovingBugs = _filechangesRemovingBugs(session, repo)
 
     counter = 0.0
     startTime = datetime.now()
@@ -306,7 +294,7 @@ def calcImpact(session, repo: Repository, evaluator: Callable, evaluator_args=No
         nonlocal counter
         counter += 1
         printProgress()
-        if any(_nextFileChangeFixesBug(session,repo,file_change.filename,file_change.pull.closed_at) for file_change
+        if any(_nextFileChangeFixesBug(session, repo, file_change.filename, file_change.pull.closed_at) for file_change
                in filechanges):
             return 1
         return 0
@@ -325,8 +313,11 @@ if __name__ == "__main__":
         evaluate(sys.argv[2], missingPrDescription)
         evaluate(sys.argv[2], largeChangesets)
         evaluate(sys.argv[2], sleepingReviews)
-        evaluate(sys.argv[2], union, [lackOfCodeReview, missingPrDescription, largeChangesets, sleepingReviews])
-        evaluate(sys.argv[2], intersection, [lackOfCodeReview, missingPrDescription, largeChangesets, sleepingReviews])
+        evaluate(sys.argv[2], review_buddies)
+        evaluate(sys.argv[2], union,
+                 [lackOfCodeReview, missingPrDescription, largeChangesets, sleepingReviews, review_buddies])
+        evaluate(sys.argv[2], intersection,
+                 [lackOfCodeReview, missingPrDescription, largeChangesets, sleepingReviews, review_buddies])
         dbsession = db.getSession()
         repo_obj: Repository = dbsession.query(Repository).filter(Repository.full_name == sys.argv[2]).first()
         if repo_obj is not None:
@@ -348,7 +339,8 @@ if __name__ == "__main__":
             res = calcImpact(dbsession, repo_obj, largeChangesets)
             cll()
             print(f"{'Large changesets'.ljust(30)}{(res[0] * 100):.2f}%\t {(res[1] * 100):.2f}%")
-            res = calcImpact(dbsession, repo_obj, union, [lackOfCodeReview, missingPrDescription, largeChangesets, sleepingReviews])
+            res = calcImpact(dbsession, repo_obj, union,
+                             [lackOfCodeReview, missingPrDescription, largeChangesets, sleepingReviews])
             cll()
             print(f"{'One of aformentioned'.ljust(30)}{(res[0] * 100):.2f}%\t {(res[1] * 100):.2f}%")
             res = calcImpact(dbsession, repo_obj, intersection,
