@@ -275,11 +275,12 @@ def calcImpact(session, repo: Repository, evaluator: Callable, evaluator_args=No
         evaluator(session, repo) if evaluator_args is None else evaluator(session, repo, evaluator_args)
     smelly: List[PullRequest] = evaluation_results.smelly.all()
     ok: List[PullRequest] = evaluation_results.considered.except_(evaluation_results.smelly).all()
-    # filechangesRemovingBugs = _filechangesRemovingBugs(session, repo)
 
     counter = 0.0
     startTime = datetime.now()
     total = evaluation_results.considered_count
+    smelly_count = evaluation_results.smelly_count
+    ok_count = total - smelly_count
     print()
 
     def helper(filechanges: List[FileChange]) -> int:
@@ -300,9 +301,13 @@ def calcImpact(session, repo: Repository, evaluator: Callable, evaluator_args=No
             return 1
         return 0
 
-    return reduce(lambda a, b: a + b, list(map(lambda pr: helper(pr.changed_files), ok))) / float(
-        evaluation_results.considered_count - evaluation_results.smelly_count), reduce(lambda a, b: a + b, list(
-        map(lambda pr: helper(pr.changed_files), smelly))) / float(evaluation_results.smelly_count)
+    ok_bugfixing = (reduce(lambda a, b: a + b,
+                           list(map(lambda pr: helper(pr.changed_files), ok))) / float(ok_count)) \
+        if ok_count > 0 else float("nan")
+    smelly_bugfixing = (reduce(lambda a, b: a + b,
+                               list(map(lambda pr: helper(pr.changed_files), smelly))) / float(smelly_count)) \
+        if smelly_count > 0 else float("nan")
+    return ok_bugfixing, smelly_bugfixing
 
 
 if __name__ == "__main__":
@@ -340,13 +345,14 @@ if __name__ == "__main__":
             res = calcImpact(dbsession, repo_obj, largeChangesets)
             cll()
             print(f"{'Large changesets'.ljust(30)}{(res[0] * 100):.2f}%\t {(res[1] * 100):.2f}%\t {'+' if res[1]>res[0] else ''}{((res[1]-res[0]) * 100):.2f}%")
-            res = calcImpact(dbsession, repo_obj, union, [lackOfCodeReview, missingPrDescription, largeChangesets, sleepingReviews])
+            res = calcImpact(dbsession, repo_obj, union, [lackOfCodeReview, missingPrDescription, largeChangesets, sleepingReviews, review_buddies])
             cll()
             print(f"{'One of aformentioned'.ljust(30)}{(res[0] * 100):.2f}%\t {(res[1] * 100):.2f}%\t {'+' if res[1]>res[0] else ''}{((res[1]-res[0]) * 100):.2f}%")
             res = calcImpact(dbsession, repo_obj, intersection,
-                             [lackOfCodeReview, missingPrDescription, largeChangesets, sleepingReviews])
+                             [lackOfCodeReview, missingPrDescription, largeChangesets, sleepingReviews, review_buddies])
             cll()
-            print(f"{'All of aforementioned'.ljust(30)}{(res[0] * 100):.2f}%\t {(res[1] * 100):.2f}%\t {'+' if res[1]>res[0] else ''}{((res[1]-res[0]) * 100):.2f}%")
+            print(
+                f"{'All of aforementioned'.ljust(30)}{(res[0] * 100):.2f}%\t {(res[1] * 100):.2f}%\t {'+' if res[1] > res[0] else ''}{((res[1] - res[0]) * 100):.2f}%")
         dbsession.close()
     else:
         print("Can't connect to db")
