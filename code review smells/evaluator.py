@@ -203,18 +203,19 @@ def review_buddies(session, repo: Repository) -> Results:
              JOIN (SELECT pull.user_id pull_user_id, COUNT(*) total_reviews
                    FROM pull
                         JOIN review ON pull.id = review.pull_id
-                   WHERE pull.repository_id = 6786166
+                   WHERE pull.repository_id = :repo_id
                      AND pull.user_id <> review.user_id
                    GROUP BY pull.user_id) AS user_total_reviews ON user_total_reviews.pull_user_id = pull.user_id
-        WHERE pull.repository_id = 6786166
+        WHERE pull.repository_id = :repo_id
           AND pull.user_id <> review.user_id
         GROUP BY pull.user_id, review.user_id, user_total_reviews.total_reviews
         HAVING CAST(COUNT(*) AS DECIMAL) / total_reviews > 0.5
            AND total_reviews > 50;
-    """)
+    """, {"repo_id": repo.id})
 
-    conditions = [and_(PullRequest.user_id == pruid, Review.user_id == revuid) for (pruid, revuid) in smelly_id_pairs]
-    smelly = considered_prs.join(Review).where(or_(*conditions))
+    smelly = considered_prs.join(Review).where(
+        tuple_(PullRequest.user_id, Review.user_id).in_(smelly_id_pairs)
+    )
 
     return Results("Review Buddies", repo, considered_prs, smelly)
 
