@@ -234,22 +234,17 @@ def get_considered_prs(repo, session):
 def pingPong(session, repo: Repository) -> Results:
     considered_prs = get_considered_prs(repo, session)
 
-    smelly_id_pairs = session.execute("""
-         with consolidated_reviewers as
-        (
-            select pull_id, user_id, count(*) reviewNumber
-            from review
-            group by pull_id, user_id
-            order by reviewNumber desc, pull_id, user_id
-        )
-        select pull_id, user_id
-        from consolidated_reviewers
-        where reviewNumber > 3
-         order by reviewNumber desc,  pull_id, user_id;
-       """)
+    smelly_id_pairs = map(lambda row: row[0], session.execute("""
+select pull.id as pullId
+from pull join review on review.pull_id = pull.id
+join (select pull.user_id, pull_id, review.user_id, count(*) reviewNumber
+        from pull join review on review.pull_id = pull.id  where pull.repository_id = :repo_id
+        group by pull_id, review.user_id, pull.user_id) as ping_pong on ping_pong.pull_id = pull.id
+where  reviewNumber > 3 and pull.repository_id = :repo_id
+ group by pull.id
+       """, {"repo_id": repo.id}))
 
-    conditions = [and_(PullRequest.user_id == pruid, Review.user_id == revuid) for (pruid, revuid) in smelly_id_pairs]
-    smelly = considered_prs.join(Review).where(or_(*conditions))
+    smelly = considered_prs.filter(PullRequest.id.in_(smelly_id_pairs))
 
     return Results("Ping-pong reviews", repo, considered_prs, smelly)
 
