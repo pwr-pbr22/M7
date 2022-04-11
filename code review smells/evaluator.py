@@ -231,18 +231,26 @@ def get_considered_prs(repo, session):
 
 
 def pingPong(session, repo: Repository) -> Results:
-    considered = get_considered_prs(repo, session)
+    considered_prs = get_considered_prs(repo, session)
 
-    reviewers = []
-    smelly = []
-    for c in considered:
-        for r in c.reviews:
-            if r.user in reviewers:
-                smelly.append(c)
-            else:
-                reviewers.append(r.user)
+    smelly_id_pairs = session.execute("""
+         with consolidated_reviewers as
+        (
+            select pull_id, user_id, count(*) reviewNumber
+            from review
+            group by pull_id, user_id
+            order by reviewNumber desc, pull_id, user_id
+        )
+        select pull_id, user_id
+        from consolidated_reviewers
+        where reviewNumber > 3
+         order by reviewNumber desc,  pull_id, user_id;
+       """)
 
-    return Results("Ping-pong reviews", repo, considered, smelly)
+    conditions = [and_(PullRequest.user_id == pruid, Review.user_id == revuid) for (pruid, revuid) in smelly_id_pairs]
+    smelly = considered_prs.join(Review).where(or_(*conditions))
+
+    return Results("Ping-pong reviews", repo, considered_prs, smelly)
 
 
 def union(session, repo: Repository, evaluators: list) -> Results:
@@ -314,10 +322,11 @@ if __name__ == "__main__":
         evaluate(sys.argv[2], largeChangesets)
         evaluate(sys.argv[2], sleepingReviews)
         evaluate(sys.argv[2], review_buddies)
+        evaluate(sys.argv[2], pingPong)
         evaluate(sys.argv[2], union,
-                 [lackOfCodeReview, missingPrDescription, largeChangesets, sleepingReviews, review_buddies])
+                 [lackOfCodeReview, missingPrDescription, largeChangesets, sleepingReviews, review_buddies, pingPong])
         evaluate(sys.argv[2], intersection,
-                 [lackOfCodeReview, missingPrDescription, largeChangesets, sleepingReviews, review_buddies])
+                 [lackOfCodeReview, missingPrDescription, largeChangesets, sleepingReviews, review_buddies, pingPong])
         dbsession = db.getSession()
         repo_obj: Repository = dbsession.query(Repository).filter(Repository.full_name == sys.argv[2]).first()
         if repo_obj is not None:
