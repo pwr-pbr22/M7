@@ -337,26 +337,40 @@ if __name__ == "__main__":
                 f"Prawdopodobieństwa, że dla przynajmniej jednego z plików zmodyfikowanych "
                 f"przez dany PR następna edycja zostanie dokonana przez bug solving PR:")
             print(f"{''.ljust(30)}OK    \t SMELLY\t IMPACT")
+
             res = calcImpact(dbsession, repo_obj, lackOfCodeReview)
             cll()
             print(f"{'Lack of code review'.ljust(30)}{(res[0] * 100):.2f}%\t {(res[1] * 100):.2f}%\t {'+' if res[1]>res[0] else ''}{((res[1]-res[0]) * 100):.2f}%")
+
             res = calcImpact(dbsession, repo_obj, missingPrDescription)
             cll()
             print(f"{'Sleeping review'.ljust(30)}{(res[0] * 100):.2f}%\t {(res[1] * 100):.2f}%\t {'+' if res[1]>res[0] else ''}{((res[1]-res[0]) * 100):.2f}%")
+
             res = calcImpact(dbsession, repo_obj, sleepingReviews)
             cll()
+            print(f"{'Review buddies'.ljust(30)}{(res[0] * 100):.2f}%\t {(res[1] * 100):.2f}%\t {'+' if res[1]>res[0] else ''}{((res[1]-res[0]) * 100):.2f}%")
+
+            res = calcImpact(dbsession, repo_obj, review_buddies)
+            cll()
+            print(f"{'Ping-pong'.ljust(30)}{(res[0] * 100):.2f}%\t {(res[1] * 100):.2f}%\t {'+' if res[1]>res[0] else ''}{((res[1]-res[0]) * 100):.2f}%")
+
+            res = calcImpact(dbsession, repo_obj, pingPong)
+            cll()
             print(f"{'Missing PR description'.ljust(30)}{(res[0] * 100):.2f}%\t {(res[1] * 100):.2f}%\t {'+' if res[1]>res[0] else ''}{((res[1]-res[0]) * 100):.2f}%")
+
             res = calcImpact(dbsession, repo_obj, largeChangesets)
             cll()
             print(f"{'Large changesets'.ljust(30)}{(res[0] * 100):.2f}%\t {(res[1] * 100):.2f}%\t {'+' if res[1]>res[0] else ''}{((res[1]-res[0]) * 100):.2f}%")
-            res = calcImpact(dbsession, repo_obj, union, [lackOfCodeReview, missingPrDescription, largeChangesets, sleepingReviews, review_buddies])
+
+            res = calcImpact(dbsession, repo_obj, union, [lackOfCodeReview, sleepingReviews, review_buddies, pingPong])
             cll()
-            print(f"{'One of aformentioned'.ljust(30)}{(res[0] * 100):.2f}%\t {(res[1] * 100):.2f}%\t {'+' if res[1]>res[0] else ''}{((res[1]-res[0]) * 100):.2f}%")
+            print(f"{'One of review related'.ljust(30)}{(res[0] * 100):.2f}%\t {(res[1] * 100):.2f}%\t {'+' if res[1]>res[0] else ''}{((res[1]-res[0]) * 100):.2f}%")
+
             res = calcImpact(dbsession, repo_obj, intersection,
-                             [lackOfCodeReview, missingPrDescription, largeChangesets, sleepingReviews, review_buddies])
+                             [lackOfCodeReview, sleepingReviews, review_buddies, pingPong])
             cll()
             print(
-                f"{'All of aforementioned'.ljust(30)}{(res[0] * 100):.2f}%\t {(res[1] * 100):.2f}%\t {'+' if res[1] > res[0] else ''}{((res[1] - res[0]) * 100):.2f}%")
+                f"{'All of review related'.ljust(30)}{(res[0] * 100):.2f}%\t {(res[1] * 100):.2f}%\t {'+' if res[1] > res[0] else ''}{((res[1] - res[0]) * 100):.2f}%")
         dbsession.close()
     else:
         print("Can't connect to db")
