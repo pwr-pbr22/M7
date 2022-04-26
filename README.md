@@ -15,12 +15,6 @@ Group members:
 - 246660 - Szymon Żmijewski, gh: Szimhead 
 - 246785 - Krzysztof Baciejowski, gh: baciejowski
 
-Initial team work organization:
-- Damian Garbala, Szymon Żmijewski:
-  mutation testing based on ast, test generation, predictive mutation testing
-- Krzysztof Baciejowski:
-  code review smells, review smell and code smell corelation
-
 Coordinator role during weeks:
 - 3-5: Krzysztof Baciejowski
 - 6-8: Damian Garbala
