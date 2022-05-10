@@ -117,8 +117,9 @@ def evaluate(repo: str, evaluator: Callable, *args) -> Union[smells.Result, metr
         session.close()
         print("Specified repository does not exist in specified database")
         return None
+    result = evaluator(get_considered_prs(repository, session), repository, *args)
     session.close()
-    return evaluator(get_considered_prs(repository, session), repository, *args)
+    return result
 
 
 def get_considered_prs(repo, session) -> Query:
