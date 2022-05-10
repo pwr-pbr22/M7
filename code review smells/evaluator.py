@@ -4,7 +4,8 @@ from datetime import datetime
 from functools import reduce
 from typing import Callable, List, Optional
 
-from sqlalchemy import and_, or_, not_, sql, tuple_, text, func
+import sqlalchemy
+from sqlalchemy import and_, or_, not_, sql, tuple_, text, func, extract
 from sqlalchemy.orm import Query
 
 import db
@@ -194,6 +195,30 @@ def sleepingReviews(session, repo: Repository) -> Results:
 
     smelly = considered.filter((PullRequest.closed_at - PullRequest.created_at) >= func.make_interval(0, 0, 0, 2))
     return Results("Sleeping reviews", repo, considered, smelly)
+
+
+# TODO return proper structure
+def review_window_metric(session, repo: Repository):
+    considered = get_considered_prs(repo, session)
+    return considered.add_columns((
+                                      func.trunc(
+                                          (
+                                                  extract('epoch', PullRequest.closed_at) -
+                                                  extract('epoch', PullRequest.created_at)
+                                          ) / 60)
+                                  ).label("metric"))
+
+
+# TODO return proper structure
+def review_window_per_line_metric(session, repo: Repository):
+    considered = get_considered_prs(repo, session)
+    return considered.add_columns((
+                                      func.trunc(
+                                          (
+                                                  extract('epoch', PullRequest.closed_at) -
+                                                  extract('epoch', PullRequest.created_at)
+                                          ) / 60 / (PullRequest.additions+PullRequest.deletions))
+                                  ).label("metric"))
 
 
 def review_buddies(session, repo: Repository) -> Results:
