@@ -6,6 +6,7 @@ import re
 import sys
 import time
 from datetime import datetime
+from typing import List
 
 import aiohttp
 import requests
@@ -15,21 +16,22 @@ from definitions import User, PullRequest, Repository, AuthorAssociationEnum, Re
     FileChange, IssueForBug
 
 
-def cls():
+def cls() -> None:
     os.system('cls' if os.name == 'nt' else 'clear')
 
 
-def _countSubpages(url):
+def _count_subpages(url: str) -> int:
     # TODO obsługiwać więcej tokenów
-    githubToken = random.choice(githubTokens)[0]
+    github_token = random.choice(github_tokens)
     pattern = re.compile('([0-9]+)>; rel="last"')
-    request = requests.get(url, headers={"Authorization": f"token {githubToken}"})
+    request = requests.get(url, headers={"Authorization": f"token {github_token}"})
     if request.status_code != 200:
         print(f"Failed to fetch the number of pages for {url}")
+        print(request.text)
         return 0
     try:
         repo = json.loads(request.text)[0]["base"]["repo"]
-        session = db.getSession()
+        session = db.get_session()
         session.merge(User(
             id=repo["owner"]["id"],
             login=repo["owner"]["login"]
@@ -42,13 +44,13 @@ def _countSubpages(url):
         ))
         session.commit()
         session.close()
-    except Exception:
+    except:
         pass
     # przemilczmy jakość kodu w tym miejscu
     return int(pattern.search(request.headers["Link"]).group(1)) if "Link" in request.headers else 1
 
 
-def _printStatus(general, overall: float, started):
+def _print_status(general: str, overall: float, started: datetime) -> None:
     cls()
     print(general)
     print(f"Done in: 0%{' ' * 94}100%")
@@ -62,18 +64,18 @@ def _printStatus(general, overall: float, started):
 
 async def _fetch_pr(session: aiohttp.ClientSession, link: str):
     # TODO obsługiwać więcej tokenów
-    githubToken = random.choice(githubTokens)[0]
+    github_token = random.choice(github_tokens)
 
     async def _request():
         pull_request = await session.request('GET',
                                              url=link,
-                                             headers={"Authorization": f"token {githubToken}"})
+                                             headers={"Authorization": f"token {github_token}"})
         reviews_request = await session.request('GET',
                                                 url=link + "/reviews",
-                                                headers={"Authorization": f"token {githubToken}"})
+                                                headers={"Authorization": f"token {github_token}"})
         files_request = await session.request('GET',
                                               url=link + "/files",
-                                              headers={"Authorization": f"token {githubToken}"})
+                                              headers={"Authorization": f"token {github_token}"})
         if pull_request.status == 403 or reviews_request.status == 403 or files_request.status == 403:
             waiting = int(files_request.headers["x-ratelimit-reset"]) - int(time.time()) + 60
             print(f"\n[{datetime.now()}] Exceeded number of requests, waiting {waiting // 60}m{waiting % 60}s",
@@ -89,7 +91,7 @@ async def _fetch_pr(session: aiohttp.ClientSession, link: str):
             return await _fetch_pr(session, link)
         return await pull_request.json(), await reviews_request.json(), await files_request.json()
 
-    def _add_pull_to_db():
+    def _add_pull_to_db() -> None:
         # pr user
         dbsession.merge(User(
             id=pull["user"]["id"],
@@ -127,7 +129,7 @@ async def _fetch_pr(session: aiohttp.ClientSession, link: str):
         dbsession.merge(pr)
         dbsession.commit()
 
-    def _add_revs_to_db():
+    def _add_revs_to_db() -> None:
         for review in revs:
             # rev user
             if review["user"] is not None:
@@ -146,19 +148,19 @@ async def _fetch_pr(session: aiohttp.ClientSession, link: str):
                 submitted_at=review["submitted_at"]
             ))
 
-    def _add_files_to_db():
+    def _add_files_to_db() -> None:
         pr = dbsession.query(PullRequest).get(pull["id"])
         for file in files_changed:
             # add or update files to db
             existing = dbsession.query(File).get({"filename": file["filename"], "repo_id": pr.repository_id})
             if existing is None:
-                newFile = File(filename=file["filename"], repo_id=pr.repository_id)
+                new_file = File(filename=file["filename"], repo_id=pr.repository_id)
                 if file["status"] == "deleted":
-                    newFile.lastDeleted = pr.closed_at
+                    new_file.lastDeleted = pr.closed_at
                 elif file["status"] == "added":
-                    newFile.firstMerged = pr.closed_at
-                dbsession.add(newFile)
-                existing = newFile
+                    new_file.firstMerged = pr.closed_at
+                dbsession.add(new_file)
+                existing = new_file
             else:
                 if file["status"] == "deleted" and (
                         existing.lastDeleted is None or existing.lastDeleted < pr.closed_at):
@@ -179,7 +181,7 @@ async def _fetch_pr(session: aiohttp.ClientSession, link: str):
     try:
         pull, revs, files_changed = await _request()
 
-        dbsession = db.getSession()
+        dbsession = db.get_session()
 
         _add_pull_to_db()
         _add_revs_to_db()
@@ -198,12 +200,14 @@ async def _fetch_pr(session: aiohttp.ClientSession, link: str):
         await _fetch_pr(session, link)
 
 
-async def downloadProjectPulls(project):
+async def download_project_pulls(project: str) -> None:
     started = datetime.now()
-    subpages = _countSubpages(
+    subpages = _count_subpages(
         f"https://api.github.com/repos/{project}/pulls?state=closed&direction=asc&per_page=100")
     for i in range(1, subpages + 1):
-        _printStatus(f"Downloading PR subpage: {i} of {subpages} (≈{subpages*300} requests)", (i - 1) / subpages, started)
+        _print_status(f"Downloading PR subpage: {i} of {subpages} (≈{subpages * 300} requests)",
+                      (i - 1) / subpages,
+                      started)
         links = list(map(lambda entry: entry["url"], json.loads(_fetch(
             f"https://api.github.com/repos/{project}/pulls?state=closed&direction=asc&per_page=100&page={i}"))))
         async with aiohttp.ClientSession() as session:
@@ -212,20 +216,22 @@ async def downloadProjectPulls(project):
                 tasks.append(_fetch_pr(session, link))
                 await asyncio.gather(*tasks, return_exceptions=True)
             await session.close()
-        _printStatus(f"Downloading PR subpage: {i} of {subpages} (≈{subpages*300} requests)", i / subpages, started)
+        _print_status(f"Downloading PR subpage: {i} of {subpages} (≈{subpages * 300} requests)", i / subpages, started)
 
 
-def downloadIssuesMarkedAsBug(project):
-    dbsession = db.getSession()
+def download_issues_marked_as_bugs(project: str) -> None:
+    dbsession = db.get_session()
     started = datetime.now()
-    repository = dbsession.query(Repository).filter(Repository.full_name == project).first()
+    repository: Repository = dbsession.query(Repository).filter(Repository.full_name == project).first()
     if repository is None:
         print("Repository is unknown")
         return
-    subpages = _countSubpages(
+    subpages = _count_subpages(
         f"https://api.github.com/repos/{project}/issues?labels=bug&state=closed&direction=asc&per_page=100")
     for i in range(1, subpages + 1):
-        _printStatus(f"Downloading issue subpage: {i} of {subpages} (≈{subpages} requests)", (i - 1) / subpages, started)
+        _print_status(f"Downloading issue subpage: {i} of {subpages} (≈{subpages} requests)",
+                      (i - 1) / subpages,
+                      started)
         for issue in list(json.loads(
                 _fetch(f"https://api.github.com/repos/{project}/issues"
                        f"?labels=bug&state=closed&direction=asc&per_page=100&page={i}"))):
@@ -235,15 +241,15 @@ def downloadIssuesMarkedAsBug(project):
                 repo_id=repository.id
             ))
             dbsession.commit()
-        _printStatus(f"Downloading issue subpage: {i} of {subpages} (≈{subpages} requests)", i / subpages, started)
+        _print_status(f"Downloading issue subpage: {i} of {subpages} (≈{subpages} requests)", i / subpages, started)
     dbsession.close()
 
 
-def _fetch(url):
+def _fetch(url: str) -> str:
     # TODO obsługiwać więcej tokenów
-    githubToken = random.choice(githubTokens)[0]
+    github_token = random.choice(github_tokens)
     try:
-        request = requests.get(url, headers={"Authorization": f"token {githubToken}"},
+        request = requests.get(url, headers={"Authorization": f"token {github_token}"},
                                timeout=10)
     except:
         print(f"\n[{datetime.now()}] Something went wrong\n"
@@ -270,11 +276,8 @@ if __name__ == '__main__':
     if len(sys.argv) < 4:
         print("Not sufficient args")
     else:
-        githubTokens = list(map(lambda token: (token, True, datetime.now()), sys.argv[3:]))
-
-        if db.prepare(sys.argv[1]):
-            asyncio.run(downloadProjectPulls(sys.argv[2]))
-            # kolejność ma znaczenie gdy repozytorium nie znajduje się w bazie
-            downloadIssuesMarkedAsBug(sys.argv[2])
-        else:
-            print("Can't connect to db")
+        github_tokens: List[str] = sys.argv[3:]
+        db.prepare(sys.argv[1])
+        asyncio.run(download_project_pulls(sys.argv[2]))
+        # kolejność ma znaczenie gdy repozytorium nie znajduje się w bazie
+        download_issues_marked_as_bugs(sys.argv[2])
