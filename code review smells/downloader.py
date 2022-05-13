@@ -22,11 +22,12 @@ def cls() -> None:
 
 def _count_subpages(url: str) -> int:
     # TODO obsługiwać więcej tokenów
-    github_token = random.choice(github_tokens)[0]
+    github_token = random.choice(github_tokens)
     pattern = re.compile('([0-9]+)>; rel="last"')
     request = requests.get(url, headers={"Authorization": f"token {github_token}"})
     if request.status_code != 200:
         print(f"Failed to fetch the number of pages for {url}")
+        print(request.text)
         return 0
     try:
         repo = json.loads(request.text)[0]["base"]["repo"]
@@ -63,7 +64,7 @@ def _print_status(general: str, overall: float, started: datetime) -> None:
 
 async def _fetch_pr(session: aiohttp.ClientSession, link: str):
     # TODO obsługiwać więcej tokenów
-    github_token = random.choice(github_tokens)[0]
+    github_token = random.choice(github_tokens)
 
     async def _request():
         pull_request = await session.request('GET',
