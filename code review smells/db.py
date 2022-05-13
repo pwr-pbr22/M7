@@ -13,5 +13,5 @@ def prepare(connection_string):
     Session = sessionmaker(bind=engine)
 
 
-def getSession():
+def get_session():
     return Session()

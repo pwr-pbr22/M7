@@ -111,7 +111,7 @@ def _next_file_change_fixes_bug(session, repo: Repository, filename: str, starti
 
 
 def evaluate(repo: str, evaluator: Callable, *args) -> Union[smells.Result, metrics.Result, None]:
-    session = db.getSession()
+    session = db.get_session()
     repository = session.query(Repository).filter(Repository.full_name == repo).first()
     if repository is None:
         session.close()
@@ -145,8 +145,8 @@ def calc_impact(session, repo: Repository, evaluator: Callable, evaluator_args=N
     ok_count = total - smelly_count
 
     def helper(filechanges: List[FileChange]) -> int:
-        if any(_next_file_change_fixes_bug(session, repo, file_change.filename, file_change.pull.closed_at) for file_change
-               in filechanges):
+        if any(_next_file_change_fixes_bug(session, repo, file_change.filename, file_change.pull.closed_at)
+               for file_change in filechanges):
             return 1
         return 0
 

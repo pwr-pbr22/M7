@@ -1,7 +1,7 @@
 import enum
 
 from sqlalchemy import ForeignKey, Column, Integer, String, Boolean, Enum, DateTime, Table, ForeignKeyConstraint, \
-    select, func, distinct, and_
+    select, func, distinct
 from sqlalchemy.orm import declarative_base, relationship, object_session
 
 Base = declarative_base()
@@ -106,7 +106,7 @@ class PullRequest(Base):
         query = select(func.count(distinct(Review.user_id))).where(Review.pull_id == self.id)
         if not include_author:
             query = query.where(Review.user_id != self.user_id)
-        if required_experience>0:
+        if required_experience > 0:
             raise NotImplementedError()
         if association is not None:
             query = query.where(Review.author_association == association)
