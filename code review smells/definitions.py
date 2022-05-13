@@ -113,7 +113,7 @@ class PullRequest(Base):
         return object_session(self).scalar(query)
 
     @property
-    def rewiews_count(self):
+    def reviews_count(self):
         return self.count_reviews(include_author=True)
 
     def count_reviews(self,
