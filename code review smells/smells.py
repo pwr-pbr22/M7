@@ -4,7 +4,7 @@ from sqlalchemy import func, or_, and_, not_, tuple_, sql
 from sqlalchemy.orm import Query
 from definitions import Repository, PullRequest, Review
 
-
+#TODO: switch to new MetricResult and adjust calculation methods
 class Result:
     def __init__(self, evaluator_name: str, repo: Repository, considered: Query, smelly: Query):
         self.evaluator_name = evaluator_name
@@ -23,6 +23,17 @@ class Result:
     @property
     def percentage(self) -> float:
         return self.smelly_count / self.considered_count
+
+    def __str__(self):
+        return f"{self.evaluator_name.ljust(30)}\t{(self.percentage * 100):.2f}%"
+
+
+class MetricResult:
+    #TODO: creating considered query, make sure to add metric colums
+    def __init__(self, evaluator_name: str, repo: Repository, considered: Query):
+        self.evaluator_name = evaluator_name
+        self.repo = repo
+        self.considered = considered
 
     def __str__(self):
         return f"{self.evaluator_name.ljust(30)}\t{(self.percentage * 100):.2f}%"
