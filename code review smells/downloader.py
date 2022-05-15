@@ -63,33 +63,35 @@ def _print_status(general: str, overall: float, started: datetime) -> None:
 
 
 async def _fetch_pr(session: aiohttp.ClientSession, link: str):
-    # TODO obsługiwać więcej tokenów
     github_token = random.choice(github_tokens)
 
-    async def _request():
-        pull_request = await session.request('GET',
-                                             url=link,
-                                             headers={"Authorization": f"token {github_token}"})
-        reviews_request = await session.request('GET',
-                                                url=link + "/reviews",
-                                                headers={"Authorization": f"token {github_token}"})
-        files_request = await session.request('GET',
-                                              url=link + "/files",
-                                              headers={"Authorization": f"token {github_token}"})
-        if pull_request.status == 403 or reviews_request.status == 403 or files_request.status == 403:
-            waiting = int(files_request.headers["x-ratelimit-reset"]) - int(time.time()) + 60
+    async def _get_results(url):
+        request = await session.request('GET',
+                                        url=url,
+                                        headers={"Authorization": f"token {github_token}"})
+        if request.status == 403:
+            waiting = int(request.headers["x-ratelimit-reset"]) - int(time.time()) + 60
             print(f"\n[{datetime.now()}] Exceeded number of requests, waiting {waiting // 60}m{waiting % 60}s",
                   end="")
             time.sleep(waiting)
             return await _fetch_pr(session, link)
-        elif pull_request.status >= 400 or reviews_request.status >= 400 or files_request.status >= 400:
+        elif request.status >= 400:
             print(f"\n[{datetime.now()}] Something went wrong\n"
-                  f"\tstatus:\t{pull_request.status}/{reviews_request.status}/{files_request.status}\n"
+                  f"\tstatus:\t{request.status}/{request.status}/{request.status}\n"
                   f"\taddress:\t{link}\n"
                   f"\tnext request in 1 minute", end="")
             time.sleep(60)
             return await _fetch_pr(session, link)
-        return await pull_request.json(), await reviews_request.json(), await files_request.json()
+        else:
+            return await request.json(), request
+
+    async def _get_paginated_results(url):
+        results, request = await _get_results(url)
+        all_results = [results]
+        while request.links is not None and request.links.get('next') is not None:
+            results, request = await _get_results(request.links.get('next').get('url'))
+            all_results.append(results)
+        return all_results
 
     def _add_pull_to_db() -> None:
         # pr user
@@ -129,62 +131,66 @@ async def _fetch_pr(session: aiohttp.ClientSession, link: str):
         dbsession.merge(pr)
         dbsession.commit()
 
-    def _add_revs_to_db() -> None:
-        for review in revs:
-            # rev user
-            if review["user"] is not None:
-                dbsession.merge(User(
-                    id=review["user"]["id"],
-                    login=review["user"]["login"]
+    def _add_reviews_to_db() -> None:
+        for page in review_pages:
+            for review in page:
+                # rev user
+                if review["user"] is not None:
+                    dbsession.merge(User(
+                        id=review["user"]["id"],
+                        login=review["user"]["login"]
+                    ))
+                # rev
+                dbsession.merge(Review(
+                    id=review["id"],
+                    pull_id=pull["id"],
+                    user_id=review["user"]["id"] if review["user"] is not None else None,
+                    body=review["body"],
+                    state=ReviewStatusesEnum[review["state"]],
+                    author_association=AuthorAssociationEnum[review["author_association"]],
+                    submitted_at=review["submitted_at"]
                 ))
-            # rev
-            dbsession.merge(Review(
-                id=review["id"],
-                pull_id=pull["id"],
-                user_id=review["user"]["id"] if review["user"] is not None else None,
-                body=review["body"],
-                state=ReviewStatusesEnum[review["state"]],
-                author_association=AuthorAssociationEnum[review["author_association"]],
-                submitted_at=review["submitted_at"]
-            ))
 
     def _add_files_to_db() -> None:
         pr = dbsession.query(PullRequest).get(pull["id"])
-        for file in files_changed:
-            # add or update files to db
-            existing = dbsession.query(File).get({"filename": file["filename"], "repo_id": pr.repository_id})
-            if existing is None:
-                new_file = File(filename=file["filename"], repo_id=pr.repository_id)
-                if file["status"] == "deleted":
-                    new_file.lastDeleted = pr.closed_at
-                elif file["status"] == "added":
-                    new_file.firstMerged = pr.closed_at
-                dbsession.add(new_file)
-                existing = new_file
-            else:
-                if file["status"] == "deleted" and (
-                        existing.lastDeleted is None or existing.lastDeleted < pr.closed_at):
-                    existing.lastDeleted = pr.closed_at
-                elif file["status"] == "added" and (
-                        existing.firstMerged is None or existing.firstMerged > pr.closed_at):
-                    existing.firstMerged = pr.closed_at
-            # add to info on pull
-            if dbsession.query(FileChange).get(
-                    {"filename": existing.filename, "repo_id": existing.repo_id, "pull_id": pr.id}) is None:
-                change = FileChange(additions=file["additions"],
-                                    deletions=file["deletions"],
-                                    changes=file["changes"]
-                                    )
-                change.file = existing
-                change.pull = pr
+        for page in file_pages:
+            for file in page:
+                # add or update files to db
+                existing = dbsession.query(File).get({"filename": file["filename"], "repo_id": pr.repository_id})
+                if existing is None:
+                    new_file = File(filename=file["filename"], repo_id=pr.repository_id)
+                    if file["status"] == "deleted":
+                        new_file.lastDeleted = pr.closed_at
+                    elif file["status"] == "added":
+                        new_file.firstMerged = pr.closed_at
+                    dbsession.add(new_file)
+                    existing = new_file
+                else:
+                    if file["status"] == "deleted" and (
+                            existing.lastDeleted is None or existing.lastDeleted < pr.closed_at):
+                        existing.lastDeleted = pr.closed_at
+                    elif file["status"] == "added" and (
+                            existing.firstMerged is None or existing.firstMerged > pr.closed_at):
+                        existing.firstMerged = pr.closed_at
+                # add to info on pull
+                if dbsession.query(FileChange).get(
+                        {"filename": existing.filename, "repo_id": existing.repo_id, "pull_id": pr.id}) is None:
+                    change = FileChange(additions=file["additions"],
+                                        deletions=file["deletions"],
+                                        changes=file["changes"]
+                                        )
+                    change.file = existing
+                    change.pull = pr
 
     try:
-        pull, revs, files_changed = await _request()
+        pull, _ = await _get_results(link)
+        review_pages = await _get_paginated_results(link + '/reviews')
+        file_pages = await _get_paginated_results(link + '/files')
 
         dbsession = db.get_session()
 
         _add_pull_to_db()
-        _add_revs_to_db()
+        _add_reviews_to_db()
         dbsession.commit()
 
         _add_files_to_db()
