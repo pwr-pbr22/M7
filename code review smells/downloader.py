@@ -93,35 +93,35 @@ async def _fetch_pr(session: aiohttp.ClientSession, link: str):
             all_results.append(results)
         return all_results
 
-    def _add_pulls_to_db() -> None:
+    def _add_pull_to_db() -> None:
         # pr user
         dbsession.merge(User(
-            id=pulls["user"]["id"],
-            login=pulls["user"]["login"]
+            id=pull["user"]["id"],
+            login=pull["user"]["login"]
         ))
         # pr assignee
-        if pulls["assignee"] is not None:
+        if pull["assignee"] is not None:
             dbsession.merge(User(
-                id=pulls["assignee"]["id"],
-                login=pulls["assignee"]["login"]
+                id=pull["assignee"]["id"],
+                login=pull["assignee"]["login"]
             ))
         # pr pull
         pr = PullRequest(
-            id=pulls["id"],
-            number=pulls["number"],
-            title=pulls["title"],
-            user_id=pulls["user"]["id"] if pulls["user"] is not None else None,
-            body=pulls["body"],
-            created_at=pulls["created_at"],
-            closed_at=pulls["closed_at"],
-            assignee_id=pulls["assignee"]["id"] if pulls["assignee"] is not None else None,
-            repository_id=pulls["base"]["repo"]["id"],
-            author_association=AuthorAssociationEnum[pulls["author_association"]],
-            merged=pulls["merged"],
-            additions=pulls["additions"],
-            deletions=pulls["deletions"])
+            id=pull["id"],
+            number=pull["number"],
+            title=pull["title"],
+            user_id=pull["user"]["id"] if pull["user"] is not None else None,
+            body=pull["body"],
+            created_at=pull["created_at"],
+            closed_at=pull["closed_at"],
+            assignee_id=pull["assignee"]["id"] if pull["assignee"] is not None else None,
+            repository_id=pull["base"]["repo"]["id"],
+            author_association=AuthorAssociationEnum[pull["author_association"]],
+            merged=pull["merged"],
+            additions=pull["additions"],
+            deletions=pull["deletions"])
         # pr assignees
-        for assignee in pulls["assignees"]:
+        for assignee in pull["assignees"]:
             user = User(
                 id=assignee["id"],
                 login=assignee["login"]
@@ -143,7 +143,7 @@ async def _fetch_pr(session: aiohttp.ClientSession, link: str):
                 # rev
                 dbsession.merge(Review(
                     id=review["id"],
-                    pull_id=pulls["id"],
+                    pull_id=pull["id"],
                     user_id=review["user"]["id"] if review["user"] is not None else None,
                     body=review["body"],
                     state=ReviewStatusesEnum[review["state"]],
@@ -152,7 +152,7 @@ async def _fetch_pr(session: aiohttp.ClientSession, link: str):
                 ))
 
     def _add_files_to_db() -> None:
-        pr = dbsession.query(PullRequest).get(pulls["id"])
+        pr = dbsession.query(PullRequest).get(pull["id"])
         for page in file_pages:
             for file in page:
                 # add or update files to db
@@ -183,13 +183,13 @@ async def _fetch_pr(session: aiohttp.ClientSession, link: str):
                     change.pull = pr
 
     try:
-        pulls, _ = await _get_results(link)
+        pull, _ = await _get_results(link)
         review_pages = await _get_paginated_results(link + '/reviews')
         file_pages = await _get_paginated_results(link + '/files')
 
         dbsession = db.get_session()
 
-        _add_pulls_to_db()
+        _add_pull_to_db()
         _add_reviews_to_db()
         dbsession.commit()
 
