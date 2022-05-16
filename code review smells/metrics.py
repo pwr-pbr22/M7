@@ -30,7 +30,7 @@ def review_window_metric(considered: Query, repo: Repository) -> Result:
 
 # noinspection PyTypeChecker
 def review_window_per_line_metric(considered: Query, repo: Repository) -> Result:
-    name = "review_window"
+    name = "review_window_per_line"
     return Result([name],
                   repo,
                   considered,
@@ -39,6 +39,45 @@ def review_window_per_line_metric(considered: Query, repo: Repository) -> Result
                                                  (
                                                          extract('epoch', PullRequest.closed_at) -
                                                          extract('epoch', PullRequest.created_at)
-                                                 ) / 60 / (PullRequest.additions+PullRequest.deletions))
+                                                 ) / 60 / (PullRequest.additions + PullRequest.deletions))
                                          ).label(name))
                   )
+
+
+def count_reviews_chards(reviews):
+    return sum(map(lambda r: r.review_chars, reviews))
+
+
+def review_chars(considered: Query, repo: Repository) -> Result:
+    name = "review_chars"
+    return Result([name],
+                  repo,
+                  considered,
+                  considered.add_columns((
+                                             count_reviews_chards(PullRequest.reviews)).label(name)))
+
+
+def review_chars_code_lines_ratio(considered: Query, repo: Repository):
+    name = "review_chars_per_loc"
+    return Result([name],
+                  repo,
+                  considered,
+                  considered.add_columns((
+                                                 count_reviews_chards(PullRequest.reviews) / (
+                                                 PullRequest.additions - PullRequest.deletions)).label(name)))
+
+
+def count_reviews_hours(reviews, creation_time):
+    return sum(map(lambda r: r.submitted_at - creation_time, reviews)) / len(reviews)
+
+
+def reviewed_lines_per_hour(considered: Query, repo: Repository):
+    name = "reviewed_lines_per_hour"
+    return Result([name],
+                  repo,
+                  considered,
+                  considered.add_columns((
+                                                 (
+                                                         PullRequest.additions - PullRequest.deletions) /
+                                                 count_reviews_hours(PullRequest.reviews,
+                                                                     PullRequest.created_at)).label(name)))
