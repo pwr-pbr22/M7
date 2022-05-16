@@ -5,27 +5,40 @@ from sqlalchemy.orm import Query
 
 
 class Result:
-    def __str__(self) -> str:
-        return super().__str__()
+    def __init__(self, metrics_names: list[str], repo: Repository, considered: Query, evaluated: Query):
+        self.metrics_names = metrics_names
+        self.repo = repo
+        self.considered = considered
+        self.evaluated = evaluated
 
 
-# TODO return proper structure
-def review_window_metric(considered: Query, repo: Repository):
-    return considered.add_columns((
-                                      func.trunc(
-                                          (
-                                                  extract('epoch', PullRequest.closed_at) -
-                                                  extract('epoch', PullRequest.created_at)
-                                          ) / 60)
-                                  ).label("metric"))
+# noinspection PyTypeChecker
+def review_window_metric(considered: Query, repo: Repository) -> Result:
+    name = "review_window"
+    return Result([name],
+                  repo,
+                  considered,
+                  considered.add_columns((
+                                             func.trunc(
+                                                 (
+                                                         extract('epoch', PullRequest.closed_at) -
+                                                         extract('epoch', PullRequest.created_at)
+                                                 ) / 60)
+                                         ).label(name))
+                  )
 
 
-# TODO return proper structure
-def review_window_per_line_metric(considered: Query, repo: Repository):
-    return considered.add_columns((
-                                      func.trunc(
-                                          (
-                                                  extract('epoch', PullRequest.closed_at) -
-                                                  extract('epoch', PullRequest.created_at)
-                                          ) / 60 / (PullRequest.additions+PullRequest.deletions))
-                                  ).label("metric"))
+# noinspection PyTypeChecker
+def review_window_per_line_metric(considered: Query, repo: Repository) -> Result:
+    name = "review_window"
+    return Result([name],
+                  repo,
+                  considered,
+                  considered.add_columns((
+                                             func.trunc(
+                                                 (
+                                                         extract('epoch', PullRequest.closed_at) -
+                                                         extract('epoch', PullRequest.created_at)
+                                                 ) / 60 / (PullRequest.additions+PullRequest.deletions))
+                                         ).label(name))
+                  )
