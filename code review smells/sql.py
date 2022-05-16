@@ -15,13 +15,9 @@ CREATE_FUNCTION_PR_FIX_BUG = f"""
                     IF
                             pr.title ILIKE '%bug%'
                         OR
-                            pr.title ILIKE '%error%'
-                        OR
                             pr.title ILIKE '%fix%'
                         OR
                             pr.body ILIKE '%bug%'
-                        OR
-                            pr.body ILIKE '%error%'
                         OR
                             pr.body ILIKE '%fix%'
                     THEN
@@ -89,9 +85,51 @@ CREATE_FUNCTION_NEXT_PR_FIX_BUG = """
             Language plpgsql;
         """
 
+CREATE_FUNCTION_BUGGINESS = """
+            CREATE FUNCTION bugginess(repo_id integer, filename text, starting timestamp, depth integer, divisor integer) RETURNS decimal AS $$
+                DECLARE
+                    prs integer[];
+                    res decimal := 0;
+                BEGIN
+                    prs := ARRAY(
+                        SELECT
+                            p.id
+                        FROM
+                            File_change AS "fc"
+                            JOIN Pull AS "p" ON fc.pull_id=p.id
+                        WHERE
+                            p.repository_id = $1 AND
+                            fc.filename = $2 AND
+                            p.created_at > $3
+                        ORDER BY
+                            p.created_at
+                        LIMIT $4
+                        );
+                    raise notice 'Value: %', prs;
+                    IF
+                        ARRAY_LENGTH(prs, 1)=0
+                    THEN
+                        RETURN null;
+                    ELSE 
+                        FOR i IN 1..ARRAY_LENGTH(prs, 1) LOOP
+                            IF 
+                                prFixesBug(prs[i])
+                            THEN
+                                res := res + pow(1.0/i,2)/divisor;
+                            END IF;
+                        END LOOP;
+                        RETURN res;
+                    END IF;
+                END;
+            $$
+            Language plpgsql;
+        """
+
 CHECK_NULL_PR_FIX_BUG = "SELECT to_regproc('pbr.public.prFixesBug') IS NULL;"
 
 CHECK_NULL_NEXT_PR_FIX_BUG = "SELECT to_regproc('pbr.public.nextFixesBug') IS NULL;"
+
+CHECK_NULL_BUGGINESS = "SELECT to_regproc('pbr.public.bugginess') IS NULL;"
 
 REVIEW_BUDDIES = """
         SELECT pull.user_id AS pull_requester, review.user_id AS reviewer

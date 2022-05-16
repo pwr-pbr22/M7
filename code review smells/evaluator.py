@@ -18,10 +18,19 @@ def create_functions_in_db(session):
     if session.execute(sql.CHECK_NULL_NEXT_PR_FIX_BUG).scalar():
         session.execute(sql.CREATE_FUNCTION_NEXT_PR_FIX_BUG)
         session.commit()
+    if session.execute(sql.CHECK_NULL_BUGGINESS).scalar():
+        session.execute(sql.CREATE_FUNCTION_BUGGINESS)
+        session.commit()
 
 
 def _next_file_change_fixes_bug(session, repo: Repository, filename: str, starting: datetime) -> Optional[bool]:
     return session.execute(f"""SELECT nextFixesBug({repo.id}, '{filename}', '{starting}'::TIMESTAMP)""").first()[0]
+
+
+def calculate_bugginess(session, repo: Repository, filename: str, starting: datetime, files_edited: int,
+                        depth: int = 4) -> Optional[float]:
+    return session.execute(
+        f"""SELECT bugginess({repo.id}, '{filename}', '{starting}'::TIMESTAMP, {depth}, {files_edited})""").first()[0]
 
 
 def evaluate(repo: str, evaluator: Callable, *args) -> Union[smells.Result, metrics.Result, None]:
