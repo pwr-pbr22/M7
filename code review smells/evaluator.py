@@ -8,101 +8,15 @@ import db
 from definitions import Repository, PullRequest, FileChange
 import smells
 import metrics
+import sql
 
 
 def create_functions_in_db(session):
-    if session.execute("SELECT to_regproc('pbr.public.prFixesBug') IS NULL;").scalar():
-        session.execute(f"""
-            CREATE FUNCTION prFixesBug(pr_id integer) RETURNS boolean AS $$
-                DECLARE
-                    pr record;
-                BEGIN
-                    -- check id
-                    IF
-                        (SELECT EXISTS(SELECT id FROM Issue_for_bug where id=pr_id))
-                    THEN
-                        RETURN true;
-                    END IF;
-    
-                    -- check content
-                    SELECT * INTO pr FROM Pull WHERE Pull.id=pr_id;
-                    IF
-                            pr.title ILIKE '%bug%'
-                        OR
-                            pr.title ILIKE '%error%'
-                        OR
-                            pr.title ILIKE '%fix%'
-                        OR
-                            pr.body ILIKE '%bug%'
-                        OR
-                            pr.body ILIKE '%error%'
-                        OR
-                            pr.body ILIKE '%fix%'
-                    THEN
-                        RETURN true;
-                    END IF;
-    
-                    -- check referenced
-                    IF
-                    (
-                        SELECT EXISTS
-                        (
-                            SELECT
-                                *
-                            FROM
-                            (
-                                (
-                                    SELECT pr.id, regexp_matches(pr.title, '#(\\d+)', 'g') AS "matches"
-                                )
-                                UNION
-                                (
-                                    SELECT pr.id, regexp_matches(pr.body, '#(\\d+)', 'g') AS "matches"
-                                )
-                            ) AS "mi"
-                            WHERE
-                                CAST(mi.matches[1] AS INTEGER) IN (SELECT number FROM issue_for_bug WHERE repo_id=pr.repository_id)
-                        )
-                    )
-                    THEN
-                        RETURN true;
-                    END IF;
-    
-                    RETURN false;
-                END;
-            $$
-            Language plpgsql;
-        """)
+    if session.execute(sql.CHECK_NULL_PR_FIX_BUG).scalar():
+        session.execute(sql.CREATE_FUNCTION_PR_FIX_BUG)
         session.commit()
-    if session.execute("SELECT to_regproc('pbr.public.nextFixesBug') IS NULL;").scalar():
-        session.execute("""
-            CREATE FUNCTION nextFixesBug(repo_id integer, filename text, starting timestamp) RETURNS boolean AS $$
-                DECLARE
-                    pr_id integer;
-                BEGIN
-                    SELECT INTO pr_id
-                        p.id
-                    FROM
-                        File_change AS "fc"
-                        JOIN Pull AS "p" ON fc.pull_id=p.id
-                    WHERE
-                        p.repository_id = $1 AND
-                        fc.filename = $2 AND
-                        p.closed_at > $3
-                    ORDER BY
-                        p.closed_at
-                    LIMIT 1;
-    
-                    IF
-                        pr_id IS NULL
-                    THEN
-                        RETURN null;
-                    ELSE
-                        RETURN prFixesBug(pr_id);
-                    END IF;
-                END;
-            $$
-            Language plpgsql;
-        """)
+    if session.execute(sql.CHECK_NULL_NEXT_PR_FIX_BUG).scalar():
+        session.execute(sql.CREATE_FUNCTION_NEXT_PR_FIX_BUG)
         session.commit()
 
 

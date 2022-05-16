@@ -3,8 +3,9 @@ from typing import List, Callable
 from sqlalchemy import func, or_, and_, not_, tuple_, sql
 from sqlalchemy.orm import Query
 from definitions import Repository, PullRequest, Review
+import sql
 
-
+#TODO: switch to new MetricResult and adjust calculation methods
 class Result:
     def __init__(self, evaluator_name: str, repo: Repository, considered: Query, smelly: Query):
         self.evaluator_name = evaluator_name
@@ -23,6 +24,17 @@ class Result:
     @property
     def percentage(self) -> float:
         return self.smelly_count / self.considered_count
+
+    def __str__(self):
+        return f"{self.evaluator_name.ljust(30)}\t{(self.percentage * 100):.2f}%"
+
+
+class MetricResult:
+    #TODO: creating considered query, make sure to add metric colums
+    def __init__(self, evaluator_name: str, repo: Repository, considered: Query):
+        self.evaluator_name = evaluator_name
+        self.repo = repo
+        self.considered = considered
 
     def __str__(self):
         return f"{self.evaluator_name.ljust(30)}\t{(self.percentage * 100):.2f}%"
@@ -65,22 +77,7 @@ def sleeping_reviews(considered: Query, repo: Repository) -> Result:
 
 def review_buddies(considered: Query, repo: Repository) -> Result:
     session = considered.session
-    smelly_id_pairs = session.execute("""
-        SELECT pull.user_id AS pull_requester, review.user_id AS reviewer
-        FROM pull
-             JOIN review ON pull.id = review.pull_id
-             JOIN (SELECT pull.user_id pull_user_id, COUNT(*) total_reviews
-                   FROM pull
-                        JOIN review ON pull.id = review.pull_id
-                   WHERE pull.repository_id = :repo_id
-                     AND pull.user_id <> review.user_id
-                   GROUP BY pull.user_id) AS user_total_reviews ON user_total_reviews.pull_user_id = pull.user_id
-        WHERE pull.repository_id = :repo_id
-          AND pull.user_id <> review.user_id
-        GROUP BY pull.user_id, review.user_id, user_total_reviews.total_reviews
-        HAVING CAST(COUNT(*) AS DECIMAL) / total_reviews > 0.5
-           AND total_reviews > 50;
-    """, {"repo_id": repo.id})
+    smelly_id_pairs = session.execute(sql.REVIEW_BUDDIES, {"repo_id": repo.id})
 
     smelly = considered.join(Review).where(
         tuple_(PullRequest.user_id, Review.user_id).in_(smelly_id_pairs)
@@ -91,15 +88,7 @@ def review_buddies(considered: Query, repo: Repository) -> Result:
 
 def ping_pong(considered: Query, repo: Repository) -> Result:
     session = considered.session
-    smelly_id_pairs = map(lambda row: row[0], session.execute("""
-        select pull.id as pullId
-        from pull join review on review.pull_id = pull.id
-        join (select pull.user_id, pull_id, review.user_id, count(*) reviewNumber
-                from pull join review on review.pull_id = pull.id  where pull.repository_id = :repo_id
-                group by pull_id, review.user_id, pull.user_id) as ping_pong on ping_pong.pull_id = pull.id
-        where  reviewNumber > 3 and pull.repository_id = :repo_id
-        group by pull.id
-        """, {"repo_id": repo.id}))
+    smelly_id_pairs = map(lambda row: row[0], session.execute(sql.PING_PONG, {"repo_id": repo.id}))
 
     smelly = considered.filter(PullRequest.id.in_(smelly_id_pairs))
 
