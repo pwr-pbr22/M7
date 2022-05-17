@@ -1,3 +1,5 @@
+from typing import List
+
 from sqlalchemy import func, extract, select, column
 
 from definitions import Repository, PullRequest
@@ -11,7 +13,7 @@ class Result:
         self.considered = considered
         self.evaluated = evaluated
 
-    def to_list(self, session) -> list[float]:
+    def to_list(self, session) -> List[float]:
         return list(map(lambda r: float(r[0]),
                         session.execute(select(column(self.metric_name)).select_from(self.evaluated.subquery())).all()))
 
