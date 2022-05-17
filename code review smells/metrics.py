@@ -54,17 +54,13 @@ def review_window_per_line_metric(considered: Query, repo: Repository) -> Result
                   )
 
 
-def count_reviews_chards(reviews):
-    return sum(map(lambda r: r.review_chars, reviews))
-
-
 def review_chars(considered: Query, repo: Repository) -> Result:
     name = "review_chars"
     return Result(name,
                   repo,
                   considered,
                   considered.add_columns((
-                                             count_reviews_chards(PullRequest.reviews)).label(name)))
+                                             count_reviews_chars(PullRequest.reviews)).label(name)))
 
 
 def review_chars_code_lines_ratio(considered: Query, repo: Repository):
@@ -73,12 +69,8 @@ def review_chars_code_lines_ratio(considered: Query, repo: Repository):
                   repo,
                   considered,
                   considered.add_columns((
-                                                 count_reviews_chards(PullRequest.reviews) / (
+                                                 count_reviews_chars(PullRequest.reviews) / (
                                                  PullRequest.additions - PullRequest.deletions)).label(name)))
-
-
-def count_reviews_hours(reviews, creation_time):
-    return sum(map(lambda r: r.submitted_at - creation_time, reviews)) / len(reviews)
 
 
 def reviewed_lines_per_hour(considered: Query, repo: Repository):
@@ -91,3 +83,11 @@ def reviewed_lines_per_hour(considered: Query, repo: Repository):
                                                          PullRequest.additions - PullRequest.deletions) /
                                                  count_reviews_hours(PullRequest.reviews,
                                                                      PullRequest.created_at)).label(name)))
+
+
+def count_reviews_chars(reviews):
+    return sum(map(lambda r: r.review_chars, reviews))
+
+
+def count_reviews_hours(reviews, creation_time):
+    return sum(map(lambda r: r.submitted_at - creation_time, reviews)) / len(reviews)
