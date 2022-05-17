@@ -85,10 +85,13 @@ CREATE_FUNCTION_NEXT_PR_FIX_BUG = """
             Language plpgsql;
         """
 
-CREATE_FUNCTION_BUGGINESS = """
-            CREATE FUNCTION bugginess(repo_id integer, filename text, starting timestamp, depth integer, divisor integer) RETURNS decimal AS $$
+
+def prepare_bugginess_function_creating_string(bugginess_calculation_function: str) -> str:
+    return f"""
+            CREATE OR REPLACE FUNCTION bugginess(repo_id integer, filename text, starting timestamp, depth integer, pull_id integer) RETURNS decimal AS $$
                 DECLARE
                     prs integer[];
+                    number_of_files integer;
                     res decimal := 0;
                 BEGIN
                     prs := ARRAY(
@@ -105,9 +108,20 @@ CREATE_FUNCTION_BUGGINESS = """
                             p.created_at
                         LIMIT $4
                         );
+                    SELECT
+                        COUNT(*)
+                    INTO
+                        number_of_files
+                    FROM 
+                        file_change AS "fc"
+                    WHERE
+                        fc.repo_id = $1 AND fc.pull_id = $5;
                     raise notice 'Value: %', prs;
+                    raise notice 'arr len: %', ARRAY_LENGTH(prs,1);
+                    raise notice 'filename: %', $2;
+                    raise notice 'created_at: %', $3;
                     IF
-                        ARRAY_LENGTH(prs, 1)=0
+                        ARRAY_LENGTH(prs, 1) IS NULL
                     THEN
                         RETURN null;
                     ELSE 
@@ -115,7 +129,7 @@ CREATE_FUNCTION_BUGGINESS = """
                             IF 
                                 prFixesBug(prs[i])
                             THEN
-                                res := res + pow(1.0/i,2)/divisor;
+                                res := {bugginess_calculation_function};
                             END IF;
                         END LOOP;
                         RETURN res;
@@ -124,6 +138,9 @@ CREATE_FUNCTION_BUGGINESS = """
             $$
             Language plpgsql;
         """
+
+
+CREATE_OR_REPLACE_FUNCTION_BUGGINESS = prepare_bugginess_function_creating_string("res + pow(i,-2)/number_of_files")
 
 CHECK_NULL_PR_FIX_BUG = "SELECT to_regproc('pbr.public.prFixesBug') IS NULL;"
 

@@ -1,3 +1,5 @@
+from typing import List
+
 from sqlalchemy import func, extract, select, column
 
 from definitions import Repository, PullRequest
@@ -11,9 +13,13 @@ class Result:
         self.considered = considered
         self.evaluated = evaluated
 
-    def to_list(self, session) -> list[float]:
-        return list(map(lambda r: float(r[0]),
-                        session.execute(select(column(self.metric_name)).select_from(self.evaluated.subquery())).all()))
+    def to_list(self, session) -> List[float]:
+        measures = list(
+            map(lambda r: float(r[0]) if r[0] is not None else None,
+                session.execute(select(column(self.metric_name)).select_from(self.evaluated.subquery())).all()))
+        numeric_entries = list(filter(lambda e: e is not None, measures))
+        average = sum(numeric_entries)/len(numeric_entries) if len(numeric_entries) > 0 else float("nan")
+        return list(map(lambda e: e if e is not None else average, measures))
 
 
 # noinspection PyTypeChecker
@@ -34,7 +40,7 @@ def review_window_metric(considered: Query, repo: Repository) -> Result:
 
 # noinspection PyTypeChecker
 def review_window_per_line_metric(considered: Query, repo: Repository) -> Result:
-    name = "review_window"
+    name = "review_window_per_line"
     return Result(name,
                   repo,
                   considered,
