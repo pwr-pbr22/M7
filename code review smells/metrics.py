@@ -1,4 +1,4 @@
-from sqlalchemy import func, extract
+from sqlalchemy import func, extract, select, column
 
 from definitions import Repository, PullRequest
 from sqlalchemy.orm import Query
@@ -11,11 +11,15 @@ class Result:
         self.considered = considered
         self.evaluated = evaluated
 
+    def to_list(self, session) -> list[float]:
+        return list(map(lambda r: float(r[0]),
+                        session.execute(select(column(self.metric_name)).select_from(self.evaluated.subquery())).all()))
+
 
 # noinspection PyTypeChecker
 def review_window_metric(considered: Query, repo: Repository) -> Result:
     name = "review_window"
-    return Result([name],
+    return Result(name,
                   repo,
                   considered,
                   considered.add_columns((
@@ -31,7 +35,7 @@ def review_window_metric(considered: Query, repo: Repository) -> Result:
 # noinspection PyTypeChecker
 def review_window_per_line_metric(considered: Query, repo: Repository) -> Result:
     name = "review_window"
-    return Result([name],
+    return Result(name,
                   repo,
                   considered,
                   considered.add_columns((
