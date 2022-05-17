@@ -5,8 +5,8 @@ from sqlalchemy.orm import Query
 
 
 class Result:
-    def __init__(self, metrics_names: list[str], repo: Repository, considered: Query, evaluated: Query):
-        self.metrics_names = metrics_names
+    def __init__(self, metric_name: str, repo: Repository, considered: Query, evaluated: Query):
+        self.metric_name = metric_name
         self.repo = repo
         self.considered = considered
         self.evaluated = evaluated
