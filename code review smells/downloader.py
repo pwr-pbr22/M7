@@ -3,15 +3,14 @@ import json
 import os
 import random
 import re
-import sys
 import time
 from datetime import datetime
-from typing import List
 
 import aiohttp
 import requests
 
 import db
+from configuration import ProjectConfiguration
 from definitions import User, PullRequest, Repository, AuthorAssociationEnum, Review, ReviewStatusesEnum, File, \
     FileChange, IssueForBug
 
@@ -252,7 +251,6 @@ def download_issues_marked_as_bugs(project: str) -> None:
 
 
 def _fetch(url: str) -> str:
-    # TODO obsługiwać więcej tokenów
     github_token = random.choice(github_tokens)
     try:
         request = requests.get(url, headers={"Authorization": f"token {github_token}"},
@@ -279,11 +277,8 @@ def _fetch(url: str) -> str:
 
 
 if __name__ == '__main__':
-    if len(sys.argv) < 4:
-        print("Not sufficient args")
-    else:
-        github_tokens: List[str] = sys.argv[3:]
-        db.prepare(sys.argv[1])
-        asyncio.run(download_project_pulls(sys.argv[2]))
-        # kolejność ma znaczenie gdy repozytorium nie znajduje się w bazie
-        download_issues_marked_as_bugs(sys.argv[2])
+    config = ProjectConfiguration()
+    db.prepare(config.connstr)
+    github_tokens = config.gh_keys
+    asyncio.run(download_project_pulls(config.project))
+    download_issues_marked_as_bugs(config.project)
