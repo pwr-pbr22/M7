@@ -20,7 +20,6 @@ def cls() -> None:
 
 
 def _count_subpages(url: str) -> int:
-    # TODO obsługiwać więcej tokenów
     github_token = random.choice(github_tokens)
     pattern = re.compile('([0-9]+)>; rel="last"')
     request = requests.get(url, headers={"Authorization": f"token {github_token}"})
@@ -280,5 +279,7 @@ if __name__ == '__main__':
     config = ProjectConfiguration()
     db.prepare(config.connstr)
     github_tokens = config.gh_keys
-    asyncio.run(download_project_pulls(config.project))
-    download_issues_marked_as_bugs(config.project)
+
+    for project in config.projects:
+        asyncio.run(download_project_pulls(project))
+        download_issues_marked_as_bugs(project)
