@@ -142,11 +142,11 @@ def prepare_bugginess_function_creating_string(bugginess_calculation_function: s
 
 CREATE_OR_REPLACE_FUNCTION_BUGGINESS = prepare_bugginess_function_creating_string("res + pow(i,-2)/number_of_files")
 
-CHECK_NULL_PR_FIX_BUG = "SELECT to_regproc('pbr.public.prFixesBug') IS NULL;"
+CHECK_NULL_PR_FIX_BUG = "SELECT to_regproc('public.prFixesBug') IS NULL;"
 
-CHECK_NULL_NEXT_PR_FIX_BUG = "SELECT to_regproc('pbr.public.nextFixesBug') IS NULL;"
+CHECK_NULL_NEXT_PR_FIX_BUG = "SELECT to_regproc('public.nextFixesBug') IS NULL;"
 
-CHECK_NULL_BUGGINESS = "SELECT to_regproc('pbr.public.bugginess') IS NULL;"
+CHECK_NULL_BUGGINESS = "SELECT to_regproc('public.bugginess') IS NULL;"
 
 REVIEW_BUDDIES = """
         SELECT pull.user_id AS pull_requester, review.user_id AS reviewer
