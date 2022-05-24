@@ -209,7 +209,7 @@ async def download_project_pulls(project: str) -> None:
     subpages = _count_subpages(
         f"https://api.github.com/repos/{project}/pulls?state=closed&direction=asc&per_page=100")
     for i in range(1, subpages + 1):
-        _print_status(f"Downloading PR subpage: {i} of {subpages} (≈{subpages * 300} requests)",
+        _print_status(f"Downloading PR subpage: {i} of {subpages} for {project} (≈{subpages * 300} requests)",
                       (i - 1) / subpages,
                       started)
         links = list(map(lambda entry: entry["url"], json.loads(_fetch(
@@ -220,7 +220,7 @@ async def download_project_pulls(project: str) -> None:
                 tasks.append(_fetch_pr(session, link))
                 await asyncio.gather(*tasks, return_exceptions=True)
             await session.close()
-        _print_status(f"Downloading PR subpage: {i} of {subpages} (≈{subpages * 300} requests)", i / subpages, started)
+        _print_status(f"Downloading PR subpage: {i} of {subpages} for {project} (≈{subpages * 300} requests)", i / subpages, started)
 
 
 def download_issues_marked_as_bugs(project: str) -> None:
@@ -233,7 +233,7 @@ def download_issues_marked_as_bugs(project: str) -> None:
     subpages = _count_subpages(
         f"https://api.github.com/repos/{project}/issues?labels=bug&state=closed&direction=asc&per_page=100")
     for i in range(1, subpages + 1):
-        _print_status(f"Downloading issue subpage: {i} of {subpages} (≈{subpages} requests)",
+        _print_status(f"Downloading issue subpage: {i} of {subpages} for {project} (≈{subpages} requests)",
                       (i - 1) / subpages,
                       started)
         for issue in list(json.loads(
@@ -245,7 +245,7 @@ def download_issues_marked_as_bugs(project: str) -> None:
                 repo_id=repository.id
             ))
             dbsession.commit()
-        _print_status(f"Downloading issue subpage: {i} of {subpages} (≈{subpages} requests)", i / subpages, started)
+        _print_status(f"Downloading issue subpage: {i} of {subpages} for {project} (≈{subpages} requests)", i / subpages, started)
     dbsession.close()
 
 
