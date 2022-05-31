@@ -47,7 +47,7 @@ def evaluate(repo: str, evaluator: Callable, *args) -> Union[smells.Result, metr
     return result
 
 
-def get_considered_prs(repo, session) -> Query:
+def get_considered_prs(repo: Repository, session) -> Query:
     return session.query(PullRequest).filter(
         and_(PullRequest.repository_id == repo.id,
              or_(
@@ -84,7 +84,7 @@ def calc_impact(session, repo: Repository, evaluator: Callable, evaluator_args=N
     return ok_bugfixing, smelly_bugfixing
 
 
-def calc_prs_bugginess(repo: Repository, considered: Query, depth: Optional[int] = 4) -> metrics.Result:
+def calc_prs_bugginess(considered: Query, repo: Repository, depth: Optional[int] = 4) -> metrics.Result:
     name = "bugginess"
     return metrics.Result(name,
                           repo,
