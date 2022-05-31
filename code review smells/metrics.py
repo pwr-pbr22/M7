@@ -2,8 +2,8 @@ from typing import List
 
 from sqlalchemy import func, extract, select, column
 
-from definitions import Repository, PullRequest
-from sqlalchemy.orm import Query
+from definitions import Repository, PullRequest, Review
+from sqlalchemy.orm import Query, registry, Session, sessionmaker, object_session
 
 
 class Result:
@@ -59,8 +59,10 @@ def review_chars(considered: Query, repo: Repository) -> Result:
     return Result(name,
                   repo,
                   considered,
-                  considered.add_columns((
-                                             count_reviews_chars(PullRequest.reviews)).label(name)))
+                  considered.add_columns(
+                      (Session().query((func.sum(func.char_length(Review.body)))
+                       .filter(PullRequest.id == Review.pull_id))
+                       ).label(name)))
 
 
 def review_chars_code_lines_ratio(considered: Query, repo: Repository):
@@ -69,7 +71,7 @@ def review_chars_code_lines_ratio(considered: Query, repo: Repository):
                   repo,
                   considered,
                   considered.add_columns((
-                                                 count_reviews_chars(PullRequest.reviews) / (
+                                                 count_reviews_chars(PullRequest.id) / (
                                                  PullRequest.additions - PullRequest.deletions)).label(name)))
 
 
@@ -85,9 +87,15 @@ def reviewed_lines_per_hour(considered: Query, repo: Repository):
                                                                      PullRequest.created_at)).label(name)))
 
 
-def count_reviews_chars(reviews):
-    return sum(map(lambda r: r.review_chars, reviews))
+def count_reviews_chars(pid):
+    reviews = Session().query(PullRequest, Review).filter(PullRequest.id == pid).filter(
+        PullRequest.id == Review.pull_id).all().Review.review_chars
+    return func.sum(reviews.Review.review_chars)
+
+    # return func.sum(pid)
+    # return sum(map(lambda r: r.review_chars, reviews))
 
 
 def count_reviews_hours(reviews, creation_time):
-    return sum(map(lambda r: r.submitted_at - creation_time, reviews)) / len(reviews)
+    return func.sum(reviews.submitted_at - reviews.creation_time) / len(reviews)
+    # return sum(map(lambda r: r.submitted_at - creation_time, reviews)) / len(reviews)
