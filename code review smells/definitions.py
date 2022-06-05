@@ -22,6 +22,21 @@ class AuthorAssociationEnum(enum.Enum):
     NONE = 5
 
 
+class Commit(Base):
+    __tablename__ = 'commit'
+    id = Column(String, primary_key=True)
+    buggy = Column(Boolean)
+
+    def __str__(self) -> str:
+        return str(vars(self))
+
+
+pulls_commits_table = Table('pulls_commits', Base.metadata,
+                            Column('commit_id', ForeignKey('commit.id')),
+                            Column('pull_id', ForeignKey('pull.id'))
+                            )
+
+
 # noinspection SpellCheckingInspection
 class Review(Base):
     __tablename__ = 'review'
@@ -82,6 +97,7 @@ class PullRequest(Base):
     user_id = Column(Integer, ForeignKey('user.id'))
     user = relationship('User', foreign_keys=user_id)
     body = Column(String)
+    commits = relationship('Commit', secondary=pulls_commits_table)
     created_at = Column(DateTime)
     closed_at = Column(DateTime)
     assignee_id = Column(Integer, ForeignKey('user.id'))

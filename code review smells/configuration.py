@@ -8,3 +8,4 @@ class ProjectConfiguration:
         self.projects = self.config.get("Config", "projects").split(",")
         self.connstr = self.config.get("Config", "connstr")
         self.gh_keys = self.config.get("Config", "gh_keys").split(",")
+        self.csv_path = self.config.get("Config", "csv_path")
