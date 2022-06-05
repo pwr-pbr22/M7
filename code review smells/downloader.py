@@ -12,7 +12,7 @@ import requests
 import db
 from configuration import ProjectConfiguration
 from definitions import User, PullRequest, Repository, AuthorAssociationEnum, Review, ReviewStatusesEnum, File, \
-    FileChange, IssueForBug
+    FileChange, IssueForBug, Commit
 
 
 def cls() -> None:
@@ -149,6 +149,13 @@ async def _fetch_pr(session: aiohttp.ClientSession, link: str):
                     submitted_at=review["submitted_at"]
                 ))
 
+    def _add_commits_to_db() -> None:
+        for page in commit_pages:
+            for commit in page:
+                commit = Commit(id=commit["sha"])
+                dbsession.merge(commit)
+                commits.append(commit)
+
     def _add_files_to_db() -> None:
         pr = dbsession.query(PullRequest).get(pull["id"])
         for page in file_pages:
@@ -181,12 +188,15 @@ async def _fetch_pr(session: aiohttp.ClientSession, link: str):
                     change.pull = pr
 
     try:
+        commits = []
         pull, _ = await _get_results(link)
+        commit_pages = await _get_paginated_results(link + '/commits')
         review_pages = await _get_paginated_results(link + '/reviews')
         file_pages = await _get_paginated_results(link + '/files')
 
         dbsession = db.get_session()
 
+        _add_commits_to_db()
         _add_pull_to_db()
         _add_reviews_to_db()
         dbsession.commit()
