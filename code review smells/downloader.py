@@ -228,7 +228,7 @@ async def download_project_pulls(project: str) -> None:
             tasks = []
             for link in links:
                 tasks.append(_fetch_pr(session, link))
-                await asyncio.gather(*tasks, return_exceptions=True)
+            await asyncio.gather(*tasks, return_exceptions=True)
             await session.close()
         _print_status(f"Downloading PR subpage: {i} of {subpages} for {project} (≈{subpages * 300} requests)", i / subpages, started)
 
