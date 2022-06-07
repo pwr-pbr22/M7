@@ -26,6 +26,7 @@ class Commit(Base):
     __tablename__ = 'commit'
     id = Column(String, primary_key=True)
     buggy = Column(Boolean)
+    project = Column(String)
 
     def __str__(self) -> str:
         return str(vars(self))
