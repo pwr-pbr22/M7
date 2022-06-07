@@ -78,7 +78,6 @@ async def _fetch_pr(session: aiohttp.ClientSession, link: str):
                   f"\tstatus:\t{request.status}/{request.status}/{request.status}\n"
                   f"\taddress:\t{link}\n"
                   f"\tnext request in 1 minute", end="")
-            time.sleep(60)
             return await _fetch_pr(session, link)
         else:
             return await request.json(), request
@@ -149,13 +148,6 @@ async def _fetch_pr(session: aiohttp.ClientSession, link: str):
                     submitted_at=review["submitted_at"]
                 ))
 
-    def _add_commits_to_db() -> None:
-        for page in commit_pages:
-            for commit in page:
-                commit = Commit(id=commit["sha"])
-                dbsession.merge(commit)
-                commits.append(commit)
-
     def _add_files_to_db() -> None:
         pr = dbsession.query(PullRequest).get(pull["id"])
         for page in file_pages:
@@ -189,29 +181,37 @@ async def _fetch_pr(session: aiohttp.ClientSession, link: str):
 
     try:
         commits = []
-        pull, _ = await _get_results(link)
         commit_pages = await _get_paginated_results(link + '/commits')
-        review_pages = await _get_paginated_results(link + '/reviews')
-        file_pages = await _get_paginated_results(link + '/files')
-
         dbsession = db.get_session()
 
-        _add_commits_to_db()
-        _add_pull_to_db()
-        _add_reviews_to_db()
-        dbsession.commit()
-
-        _add_files_to_db()
-        dbsession.commit()
-
-        dbsession.close()
+        for page in commit_pages:
+            for commit in page:
+                if dbsession.query(Commit).get(commit['sha']):
+                    pull, _ = await _get_results(link)
+                    review_pages = await _get_paginated_results(link + '/reviews')
+                    file_pages = await _get_paginated_results(link + '/files')
+                    _add_pull_to_db()
+                    _add_reviews_to_db()
+                    dbsession.commit()
+                    _add_files_to_db()
+                    dbsession.commit()
+                    pr = dbsession.query(PullRequest).get(pull['id'])
+                    for page2 in commit_pages:
+                        for commit2 in page2:
+                            db_commit = dbsession.query(Commit).get(commit2['sha'])
+                            if db_commit:
+                                pr.commits.append(db_commit)
+                    dbsession.merge(pr)
+                    dbsession.commit()
+                    dbsession.close()
+                    print("Saved", pull['id'])
+                    return
     except Exception as e:
         print(f"\n[{datetime.now()}] Something went wrong\n"
               f"\taddress:\t{link}\n"
-              f"\tnext request in 1 minute\n"
               f"{repr(e)}", end="")
-        time.sleep(60)
         await _fetch_pr(session, link)
+    dbsession.close()
 
 
 async def download_project_pulls(project: str) -> None:
@@ -264,11 +264,10 @@ def _fetch(url: str) -> str:
     try:
         request = requests.get(url, headers={"Authorization": f"token {github_token}"},
                                timeout=10)
-    except:
+    except Exception as e:
         print(f"\n[{datetime.now()}] Something went wrong\n"
               f"\taddress:\t{url}\n"
-              f"\tnext request in 1 minute", end="")
-        time.sleep(60)
+              f"{repr(e)}", end="")
         return _fetch(url)
     if request.status_code < 400:
         return request.text
@@ -281,7 +280,6 @@ def _fetch(url: str) -> str:
               f"\tstatus:\t{request.status_code}\n"
               f"\taddress:\t{request.url}\n"
               f"\tnext request in 1 minute", end="")
-        time.sleep(60)
     return _fetch(url)
 
 
@@ -292,4 +290,4 @@ if __name__ == '__main__':
 
     for project in config.projects:
         asyncio.run(download_project_pulls(project))
-        download_issues_marked_as_bugs(project)
+        # download_issues_marked_as_bugs(project)

@@ -8,12 +8,12 @@ from definitions import Commit
 def import_values(df):
     session = db.get_session()
     for index, row in df.iterrows():
-        commit = session.query(Commit).get(row['commit_id'])
-        if commit is not None:
-            commit.buggy = bool(row['buggy'])
-            print("Assigned")
-            session.merge(commit)
-            session.commit()
+        commit = Commit()
+        commit.id = str(row['commit_id'])
+        commit.buggy = bool(row['buggy'])
+        commit.project = str(row['project'])
+        session.merge(commit)
+        session.commit()
     session.close()
 
 
