@@ -91,13 +91,70 @@ def reviewed_lines_per_hour(considered: Query, repo: Repository):
                   considered,
                   considered.add_columns(
                       Session().query(
-                          func.div(
-                              func.sum(func.char_length(Review.body)).filter(PullRequest.id == Review.pull_id),
-                              (
-                                      extract('epoch', PullRequest.closed_at) -
-                                      extract('epoch', PullRequest.created_at)
-                              )
-                          )
+                          # func.div(
+                          func.sum(func.char_length(Review.body)).filter(PullRequest.id == Review.pull_id) /
+                          func.trunc((
+                                  extract('epoch', PullRequest.closed_at) -
+                                  extract('epoch', PullRequest.created_at)
+                          ))
+                          # )
                       ).label(name)
                   )
                   )
+
+
+def no_of_reviewers(considered: Query, repo: Repository) -> Result:
+    name = "no_of_reviewers"
+    return Result(name,
+                  repo,
+                  considered,
+                  considered.add_columns(
+                      (Session().query((func.count(Review.user_id).filter(PullRequest.id == Review.pull_id)))).label(
+                          name)))
+
+
+def no_of_reviewers_diff_than_author(considered: Query, repo: Repository) -> Result:
+    name = "no_of_reviewers_diff_than_author"
+    return Result(name,
+                  repo,
+                  considered,
+                  considered.add_columns(
+                      (Session().query((func.count(Review.user_id).filter(
+                          PullRequest.id == Review.pull_id and PullRequest.user_id != Review.user_id)))).label(
+                          name)))
+
+
+def no_of_reviews(considered: Query, repo: Repository) -> Result:
+    name = "no_of_reviews"
+    return Result(name,
+                  repo,
+                  considered,
+                  considered.add_columns(
+                      (Session().query((func.count(Review.id).filter(
+                          PullRequest.id == Review.pull_id)))).label(
+                          name))
+                  )
+
+
+# def no_of_fixes(considered: Query, repo: Repository) -> Result:
+#     name = "no_of_fixes"
+#     return Result(name,
+#                   repo,
+#                   considered,
+#                   considered.add_columns((Session().query((func.count(.id).filter(PullRequest.id == Review.pull_id)))).label(
+#                           name))
+#                   )
+
+
+def ping_pong(considered: Query, repo: Repository) -> Result:
+    name = "ping_pong"
+    return Result(name,
+                  repo,
+                  considered,
+                  considered.add_columns(
+                      (Session().query((func.count(Review.id).filter(
+                          PullRequest.id == Review.pull_id and func.count(Review.id) > 3)))).label(
+                          name))
+                  )
+
+
