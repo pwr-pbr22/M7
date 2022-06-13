@@ -1,6 +1,6 @@
 import enum
 
-from sqlalchemy import ForeignKey, Column, Integer, String, Boolean, Enum, DateTime, Table, ForeignKeyConstraint, \
+from sqlalchemy import ForeignKey, Column, Integer, String, Float, Boolean, Enum, DateTime, Table, ForeignKeyConstraint, \
     select, func, distinct
 from sqlalchemy.orm import declarative_base, relationship, object_session
 
@@ -27,6 +27,18 @@ class Commit(Base):
     id = Column(String, primary_key=True)
     buggy = Column(Boolean)
     project = Column(String)
+    la = Column(Integer)
+    ld = Column(Integer)
+    nf = Column(Integer)
+    nd = Column(Integer)
+    ns = Column(Integer)
+    ent = Column(Float)
+    ndev = Column(Float)
+    age = Column(Float)
+    nuc = Column(Float)
+    aexp = Column(Integer)
+    arexp = Column(Float)
+    asexp = Column(Float)
 
     def __str__(self) -> str:
         return str(vars(self))
