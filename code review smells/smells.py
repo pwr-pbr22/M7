@@ -31,10 +31,12 @@ class Result:
 
 
 def lack_of_review(considered: Query, repo: Repository) -> Result:
+    # noinspection PyUnresolvedReferences
     smelly = considered.except_(considered.join(PullRequest.reviews).filter(PullRequest.user_id != Review.user_id))
     return Result("Lack of code review", repo, considered, smelly)
 
 
+# noinspection PyNoneFunctionAssignment
 def missing_description(considered: Query, repo: Repository) -> Result:
     smelly = considered.filter(
         or_(
@@ -52,16 +54,21 @@ def missing_description(considered: Query, repo: Repository) -> Result:
             )
         )
     )
+    # noinspection PyTypeChecker
     return Result("Missing PR description", repo, considered, smelly)
 
 
+# noinspection PyNoneFunctionAssignment
 def large_changesets(considered: Query, repo: Repository) -> Result:
     smelly = considered.filter(PullRequest.deletions + PullRequest.additions > 500)
+    # noinspection PyTypeChecker
     return Result("Large changeset", repo, considered, smelly)
 
 
+# noinspection PyNoneFunctionAssignment
 def sleeping_reviews(considered: Query, repo: Repository) -> Result:
     smelly = considered.filter((PullRequest.closed_at - PullRequest.created_at) >= func.make_interval(0, 0, 0, 2))
+    # noinspection PyTypeChecker
     return Result("Sleeping reviews", repo, considered, smelly)
 
 
@@ -69,6 +76,7 @@ def review_buddies(considered: Query, repo: Repository) -> Result:
     session = considered.session
     smelly_id_pairs = session.execute(sql_scripts.REVIEW_BUDDIES, {"repo_id": repo.id})
 
+    # noinspection PyUnresolvedReferences
     smelly = considered.join(Review).where(
         tuple_(PullRequest.user_id, Review.user_id).in_(smelly_id_pairs)
     )
@@ -82,6 +90,7 @@ def ping_pong(considered: Query, repo: Repository) -> Result:
 
     smelly = considered.filter(PullRequest.id.in_(smelly_id_pairs))
 
+    # noinspection PyTypeChecker
     return Result("Ping-pong reviews", repo, considered, smelly)
 
 

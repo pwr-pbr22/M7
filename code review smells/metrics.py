@@ -1,9 +1,9 @@
 from typing import List
 
 from sqlalchemy import func, extract, select, column
+from sqlalchemy.orm import Query, Session
 
 from definitions import Repository, PullRequest, Review
-from sqlalchemy.orm import Query, registry, Session, sessionmaker, object_session
 
 
 class Result:
@@ -54,6 +54,7 @@ def review_window_per_line_metric(considered: Query, repo: Repository) -> Result
                   )
 
 
+# noinspection PyTypeChecker
 def review_chars(considered: Query, repo: Repository) -> Result:
     name = "review_chars"
     return Result(name,
@@ -66,6 +67,7 @@ def review_chars(considered: Query, repo: Repository) -> Result:
                        ).label(name)))
 
 
+# noinspection PyTypeChecker
 def review_chars_code_lines_ratio(considered: Query, repo: Repository):
     name = "review_chars_per_loc"
     return Result(name,
@@ -84,6 +86,7 @@ def review_chars_code_lines_ratio(considered: Query, repo: Repository):
                   )
 
 
+# noinspection PyTypeChecker
 def reviewed_lines_per_hour(considered: Query, repo: Repository):
     name = "reviewed_lines_per_hour"
     return Result(name,
@@ -103,6 +106,7 @@ def reviewed_lines_per_hour(considered: Query, repo: Repository):
                   )
 
 
+# noinspection PyTypeChecker
 def no_of_reviewers(considered: Query, repo: Repository) -> Result:
     name = "no_of_reviewers"
     return Result(name,
@@ -113,6 +117,7 @@ def no_of_reviewers(considered: Query, repo: Repository) -> Result:
                           name)))
 
 
+# noinspection PyTypeChecker
 def no_of_reviewers_diff_than_author(considered: Query, repo: Repository) -> Result:
     name = "no_of_reviewers_diff_than_author"
     return Result(name,
@@ -124,6 +129,7 @@ def no_of_reviewers_diff_than_author(considered: Query, repo: Repository) -> Res
                           name)))
 
 
+# noinspection PyTypeChecker
 def no_of_reviews(considered: Query, repo: Repository) -> Result:
     name = "no_of_reviews"
     return Result(name,
@@ -141,11 +147,13 @@ def no_of_reviews(considered: Query, repo: Repository) -> Result:
 #     return Result(name,
 #                   repo,
 #                   considered,
-#                   considered.add_columns((Session().query((func.count(.id).filter(PullRequest.id == Review.pull_id)))).label(
-#                           name))
-#                   )
+#                   considered.add_columns(
+#                       (Session().query((func.count(.id).filter(PullRequest.id == Review.pull_id)))).label(
+#                       name))
+#     )
 
 
+# noinspection PyTypeChecker
 def ping_pong(considered: Query, repo: Repository) -> Result:
     name = "ping_pong"
     return Result(name,
@@ -156,5 +164,3 @@ def ping_pong(considered: Query, repo: Repository) -> Result:
                           PullRequest.id == Review.pull_id and func.count(Review.id) > 3)))).label(
                           name))
                   )
-
-

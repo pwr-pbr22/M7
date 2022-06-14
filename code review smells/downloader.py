@@ -11,8 +11,7 @@ import requests
 
 import db
 from configuration import ProjectConfiguration
-from definitions import User, PullRequest, Repository, AuthorAssociationEnum, Review, ReviewStatusesEnum, File, \
-    FileChange, IssueForBug, Commit
+from definitions import User, PullRequest, Repository, AuthorAssociationEnum, Review, ReviewStatusesEnum, Commit
 
 
 def cls() -> None:
@@ -148,39 +147,7 @@ async def _fetch_pr(session: aiohttp.ClientSession, link: str):
                     submitted_at=review["submitted_at"]
                 ))
 
-    def _add_files_to_db() -> None:
-        pr = dbsession.query(PullRequest).get(pull["id"])
-        for page in file_pages:
-            for file in page:
-                # add or update files to db
-                existing = dbsession.query(File).get({"filename": file["filename"], "repo_id": pr.repository_id})
-                if existing is None:
-                    new_file = File(filename=file["filename"], repo_id=pr.repository_id)
-                    if file["status"] == "deleted":
-                        new_file.lastDeleted = pr.closed_at
-                    elif file["status"] == "added":
-                        new_file.firstMerged = pr.closed_at
-                    dbsession.add(new_file)
-                    existing = new_file
-                else:
-                    if file["status"] == "deleted" and (
-                            existing.lastDeleted is None or existing.lastDeleted < pr.closed_at):
-                        existing.lastDeleted = pr.closed_at
-                    elif file["status"] == "added" and (
-                            existing.firstMerged is None or existing.firstMerged > pr.closed_at):
-                        existing.firstMerged = pr.closed_at
-                # add to info on pull
-                if dbsession.query(FileChange).get(
-                        {"filename": existing.filename, "repo_id": existing.repo_id, "pull_id": pr.id}) is None:
-                    change = FileChange(additions=file["additions"],
-                                        deletions=file["deletions"],
-                                        changes=file["changes"]
-                                        )
-                    change.file = existing
-                    change.pull = pr
-
     try:
-        commits = []
         commit_pages = await _get_paginated_results(link + '/commits')
         dbsession = db.get_session()
 
@@ -189,11 +156,8 @@ async def _fetch_pr(session: aiohttp.ClientSession, link: str):
                 if dbsession.query(Commit).get(commit['sha']):
                     pull, _ = await _get_results(link)
                     review_pages = await _get_paginated_results(link + '/reviews')
-                    file_pages = await _get_paginated_results(link + '/files')
                     _add_pull_to_db()
                     _add_reviews_to_db()
-                    dbsession.commit()
-                    _add_files_to_db()
                     dbsession.commit()
                     pr = dbsession.query(PullRequest).get(pull['id'])
                     for page2 in commit_pages:
@@ -206,12 +170,12 @@ async def _fetch_pr(session: aiohttp.ClientSession, link: str):
                     dbsession.close()
                     print("Saved", pull['id'])
                     return
+        dbsession.close()
     except Exception as e:
         print(f"\n[{datetime.now()}] Something went wrong\n"
               f"\taddress:\t{link}\n"
               f"{repr(e)}", end="")
         await _fetch_pr(session, link)
-    dbsession.close()
 
 
 async def download_project_pulls(project: str) -> None:
@@ -230,33 +194,8 @@ async def download_project_pulls(project: str) -> None:
                 tasks.append(_fetch_pr(session, link))
             await asyncio.gather(*tasks, return_exceptions=True)
             await session.close()
-        _print_status(f"Downloading PR subpage: {i} of {subpages} for {project} (≈{subpages * 300} requests)", i / subpages, started)
-
-
-def download_issues_marked_as_bugs(project: str) -> None:
-    dbsession = db.get_session()
-    started = datetime.now()
-    repository: Repository = dbsession.query(Repository).filter(Repository.full_name == project).first()
-    if repository is None:
-        print("Repository is unknown")
-        return
-    subpages = _count_subpages(
-        f"https://api.github.com/repos/{project}/issues?labels=bug&state=closed&direction=asc&per_page=100")
-    for i in range(1, subpages + 1):
-        _print_status(f"Downloading issue subpage: {i} of {subpages} for {project} (≈{subpages} requests)",
-                      (i - 1) / subpages,
-                      started)
-        for issue in list(json.loads(
-                _fetch(f"https://api.github.com/repos/{project}/issues"
-                       f"?labels=bug&state=closed&direction=asc&per_page=100&page={i}"))):
-            dbsession.merge(IssueForBug(
-                id=issue["id"],
-                number=issue["number"],
-                repo_id=repository.id
-            ))
-            dbsession.commit()
-        _print_status(f"Downloading issue subpage: {i} of {subpages} for {project} (≈{subpages} requests)", i / subpages, started)
-    dbsession.close()
+        _print_status(f"Downloading PR subpage: {i} of {subpages} for {project} (≈{subpages * 300} requests)",
+                      i / subpages, started)
 
 
 def _fetch(url: str) -> str:
@@ -290,4 +229,3 @@ if __name__ == '__main__':
 
     for project in config.projects:
         asyncio.run(download_project_pulls(project))
-        # download_issues_marked_as_bugs(project)
