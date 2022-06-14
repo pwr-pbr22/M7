@@ -67,6 +67,10 @@ To download required data execute script **downloader.py**.
 
 > ⚠️ Asyncio library isn't working properly in Ipython, thus usage of system terminal is necessary.
 
+> ✅ ```OSError22, 'The semaphore timeout period has expired'``` is a Windows thing, which does not affect downloading in other way than prolonging it (sometimes updating network drivers helps).
+>
+> ✅ ```Session closed exception``` after downloading project can happen, however this and previous project data won't be affected.
+
 This step can take hours depending on number of tokens and number of requests allowed. There are no obstacles to run it multiple times.
 
 > 💡 Some repositories are available in **db** file which can be imported to your Postgres database. To check available repositories run ```SELECT full_name FROM repo```.
