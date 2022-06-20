@@ -12,6 +12,10 @@ class Result:
         self.repo = repo
         self.considered = considered
         self.evaluated = evaluated
+		
+    @property
+    def considered_count(self) -> int:
+        return self.considered.count()
 
     def to_list(self, session) -> List[float]:
         measures = list(
@@ -78,7 +82,7 @@ def review_chars_code_lines_ratio(considered: Query, repo: Repository):
                           func.div(
                               func.sum(func.char_length(Review.body)).filter(PullRequest.id == Review.pull_id),
                               (
-                                      PullRequest.additions - PullRequest.deletions
+                                      PullRequest.additions + PullRequest.deletions
                               )
                           )
                       ).label(name)
@@ -113,7 +117,7 @@ def no_of_reviewers(considered: Query, repo: Repository) -> Result:
                   repo,
                   considered,
                   considered.add_columns(
-                      (Session().query((func.count(Review.user_id).filter(PullRequest.id == Review.pull_id)))).label(
+                      (Session().query((func.count(Review.user_id.distinct()).filter(PullRequest.id == Review.pull_id)))).label(
                           name)))
 
 
@@ -124,7 +128,7 @@ def no_of_reviewers_diff_than_author(considered: Query, repo: Repository) -> Res
                   repo,
                   considered,
                   considered.add_columns(
-                      (Session().query((func.count(Review.user_id).filter(
+                      (Session().query((func.count(Review.user_id.distinct()).filter(
                           PullRequest.id == Review.pull_id and PullRequest.user_id != Review.user_id)))).label(
                           name)))
 
