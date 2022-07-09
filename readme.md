@@ -27,22 +27,25 @@ projects={project1},{project2}
 gh_keys={token1},{token2}
 csv_path={Path to apachejit_total.csv}
 ```
-where projects accepts values:
-- apache/ignite
-- apache/hadoop-mapreduce
-- apache/groovy
-- apache/zookeeper
-- apache/hbase
-- apache/kafka
-- apache/activemq
-- apache/zeppelin
-- apache/camel
-- apache/spark
-- apache/flink
-- apache/cassandra
-- apache/hadoop-hdfs
-- apache/hadoop
-- apache/hive
+<details>
+  <summary>List of proper project values</summary>
+    Analysis can be performed for:
+    - apache/ignite
+    - apache/hadoop-mapreduce
+    - apache/groovy
+    - apache/zookeeper
+    - apache/hbase
+    - apache/kafka
+    - apache/activemq
+    - apache/zeppelin
+    - apache/camel
+    - apache/spark
+    - apache/flink
+    - apache/cassandra
+    - apache/hadoop-hdfs
+    - apache/hadoop
+    - apache/hive
+</details>
 
 eg.
 ```
