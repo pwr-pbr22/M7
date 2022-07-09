@@ -1,10 +1,8 @@
 import os
 import sys
-from datetime import datetime
-from functools import reduce
-from typing import Callable, List, Optional
+from typing import Callable
 
-from sqlalchemy import and_, or_, not_, sql, tuple_, text, func
+from sqlalchemy import and_, or_, not_, sql, tuple_, func
 from sqlalchemy.orm import Query
 
 import db
@@ -42,105 +40,8 @@ def cls():
     os.system('cls' if os.name == 'nt' else 'clear')
 
 
-def __createFunctionsInDb(session):
-    session.execute(f"""
-        CREATE OR REPLACE FUNCTION prFixesBug(pr_id integer) RETURNS boolean AS $$
-            DECLARE
-                pr record;
-                nt text;
-            BEGIN
-                -- check id
-                IF 
-                    (SELECT EXISTS(SELECT id FROM Issue_for_bug where id=pr_id))
-                THEN
-                    RETURN true;
-                END IF;
-                
-                -- check content
-                SELECT * INTO pr FROM Pull WHERE Pull.id=pr_id;
-                IF
-                        pr.title ILIKE '%bug%'
-                    OR
-                        pr.title ILIKE '%error%'
-                    OR
-                        pr.title ILIKE '%fix%'
-                    OR
-                        pr.body ILIKE '%bug%'
-                    OR
-                        pr.body ILIKE '%error%'
-                    OR
-                        pr.body ILIKE '%fix%'
-                THEN
-                    RETURN true;
-                END IF;
-                
-                -- check referenced
-                IF
-                (
-                    SELECT EXISTS
-                    (
-                        SELECT 
-                            * 
-                        FROM 
-                        (
-                            (
-                                SELECT pr.id, regexp_matches(pr.title, '#(\\d+)', 'g') AS "matches"
-                            )
-                            UNION
-                            (
-                                SELECT pr.id, regexp_matches(pr.body, '#(\\d+)', 'g') AS "matches"
-                            )
-                        ) AS "mi"
-                        WHERE
-                            CAST(mi.matches[1] AS INTEGER) IN (SELECT number FROM issue_for_bug WHERE repo_id=pr.repository_id)
-                    )
-                )
-                THEN
-                    RETURN true;
-                END IF;
-                
-                RETURN false;
-            END;
-        $$
-        Language plpgsql;
-
-
-        CREATE OR REPLACE FUNCTION nextFixesBug(repo_id integer, filename text, starting timestamp) RETURNS boolean AS $$
-            DECLARE
-                pr_id integer;
-            BEGIN
-                SELECT INTO pr_id
-                    p.id
-                FROM
-                    File_change AS "fc" 
-                    JOIN Pull AS "p" ON fc.pull_id=p.id
-                WHERE
-                    p.repository_id = $1 AND
-                    fc.filename = $2 AND
-                    p.closed_at > $3
-                ORDER BY
-                    p.closed_at
-                LIMIT 1;
-                
-                IF 
-                    pr_id IS NULL
-                THEN
-                    RETURN null;
-                ELSE
-                    RETURN prFixesBug(pr_id);
-                END IF;
-            END;
-        $$
-        Language plpgsql;
-    """)
-
-
-def _nextFileChangeFixesBug(session, repo: Repository, filename: str, starting: datetime) -> Optional[bool]:
-    return session.execute(f"""SELECT nextFixesBug({repo.id}, '{filename}', '{starting}'::TIMESTAMP)""").first()[0]
-
-
 def evaluate(repo: str, evaluator: Callable, *args) -> None:
-    session = db.getSession()
+    session = db.get_session()
     repository = session.query(Repository).filter(Repository.full_name == repo).first()
     if repository is None:
         session.close()
@@ -150,14 +51,14 @@ def evaluate(repo: str, evaluator: Callable, *args) -> None:
     session.close()
 
 
-def lackOfCodeReview(session, repo: Repository) -> Results:
+def lack_of_review(session, repo: Repository) -> Results:
     considered = get_considered_prs(repo, session)
 
     smelly = considered.except_(considered.join(PullRequest.reviews).filter(PullRequest.user_id != Review.user_id))
     return Results("Lack of code review", repo, considered, smelly)
 
 
-def missingPrDescription(session, repo: Repository) -> Results:
+def missing_description(session, repo: Repository) -> Results:
     considered = get_considered_prs(repo, session)
 
     smelly = considered.filter(
@@ -179,14 +80,14 @@ def missingPrDescription(session, repo: Repository) -> Results:
     return Results("Missing PR description", repo, considered, smelly)
 
 
-def largeChangesets(session, repo: Repository) -> Results:
+def large_changesets(session, repo: Repository) -> Results:
     considered = get_considered_prs(repo, session)
 
     smelly = considered.filter(PullRequest.deletions + PullRequest.additions > 500)
     return Results("Large changeset", repo, considered, smelly)
 
 
-def sleepingReviews(session, repo: Repository) -> Results:
+def sleeping_reviews(session, repo: Repository) -> Results:
     considered = get_considered_prs(repo, session)
 
     smelly = considered.filter((PullRequest.closed_at - PullRequest.created_at) >= func.make_interval(0, 0, 0, 2))
@@ -231,7 +132,7 @@ def get_considered_prs(repo, session):
     )
 
 
-def pingPong(session, repo: Repository) -> Results:
+def ping_pong(session, repo: Repository) -> Results:
     considered_prs = get_considered_prs(repo, session)
 
     smelly_id_pairs = map(lambda row: row[0], session.execute("""
@@ -273,104 +174,20 @@ def intersection(session, repo: Repository, evaluators: list) -> Results:
     return Results(name, repo, considered, smelly)
 
 
-def calcImpact(session, repo: Repository, evaluator: Callable, evaluator_args=None) -> (float, float):
-    evaluation_results: Results = \
-        evaluator(session, repo) if evaluator_args is None else evaluator(session, repo, evaluator_args)
-    smelly: List[PullRequest] = evaluation_results.smelly.all()
-    ok: List[PullRequest] = evaluation_results.considered.except_(evaluation_results.smelly).all()
-
-    counter = 0.0
-    startTime = datetime.now()
-    total = evaluation_results.considered_count
-    smelly_count = evaluation_results.smelly_count
-    ok_count = total - smelly_count
-    print()
-
-    def helper(filechanges: List[FileChange]) -> int:
-        def printProgress():
-            cll()
-            nonlocal counter
-            percentage = counter / total
-            if percentage > 0:
-                remainingTime = int((datetime.now() - startTime).seconds / percentage * (1 - percentage))
-                print(
-                    f"[{(percentage * 100):.2f}%, {remainingTime // 60}m{str(remainingTime % 60).rjust(2, '0')}s]")
-
-        nonlocal counter
-        counter += 1
-        printProgress()
-        if any(_nextFileChangeFixesBug(session, repo, file_change.filename, file_change.pull.closed_at) for file_change
-               in filechanges):
-            return 1
-        return 0
-
-    ok_bugfixing = (reduce(lambda a, b: a + b,
-                           list(map(lambda pr: helper(pr.changed_files), ok))) / float(ok_count)) \
-        if ok_count > 0 else float("nan")
-    smelly_bugfixing = (reduce(lambda a, b: a + b,
-                               list(map(lambda pr: helper(pr.changed_files), smelly))) / float(smelly_count)) \
-        if smelly_count > 0 else float("nan")
-    return ok_bugfixing, smelly_bugfixing
-
-
 if __name__ == "__main__":
     cls()
     if db.prepare(sys.argv[1]):
-        print("Występowanie poszczególnych smelli w PR:")
+        print("Smells in PRs:")
         print(f"{''.ljust(30)}OK      \t SMELLY")
-        evaluate(sys.argv[2], lackOfCodeReview)
-        evaluate(sys.argv[2], missingPrDescription)
-        evaluate(sys.argv[2], largeChangesets)
-        evaluate(sys.argv[2], sleepingReviews)
+        evaluate(sys.argv[2], lack_of_review)
+        evaluate(sys.argv[2], missing_description)
+        evaluate(sys.argv[2], large_changesets)
+        evaluate(sys.argv[2], sleeping_reviews)
         evaluate(sys.argv[2], review_buddies)
-        evaluate(sys.argv[2], pingPong)
+        evaluate(sys.argv[2], ping_pong)
         evaluate(sys.argv[2], union,
-                 [lackOfCodeReview, missingPrDescription, largeChangesets, sleepingReviews, review_buddies, pingPong])
+                 [lack_of_review, missing_description, large_changesets, sleeping_reviews, review_buddies, ping_pong])
         evaluate(sys.argv[2], intersection,
-                 [lackOfCodeReview, missingPrDescription, largeChangesets, sleepingReviews, review_buddies, pingPong])
-        dbsession = db.getSession()
-        repo_obj: Repository = dbsession.query(Repository).filter(Repository.full_name == sys.argv[2]).first()
-        if repo_obj is not None:
-            __createFunctionsInDb(dbsession)
-            print()
-            print(
-                f"Prawdopodobieństwa, że dla przynajmniej jednego z plików zmodyfikowanych "
-                f"przez dany PR następna edycja zostanie dokonana przez bug solving PR:")
-            print(f"{''.ljust(30)}OK    \t SMELLY\t IMPACT")
-
-            res = calcImpact(dbsession, repo_obj, lackOfCodeReview)
-            cll()
-            print(f"{'Lack of code review'.ljust(30)}{(res[0] * 100):.2f}%\t {(res[1] * 100):.2f}%\t {'+' if res[1]>res[0] else ''}{((res[1]-res[0]) * 100):.2f}%")
-
-            res = calcImpact(dbsession, repo_obj, missingPrDescription)
-            cll()
-            print(f"{'Sleeping review'.ljust(30)}{(res[0] * 100):.2f}%\t {(res[1] * 100):.2f}%\t {'+' if res[1]>res[0] else ''}{((res[1]-res[0]) * 100):.2f}%")
-
-            res = calcImpact(dbsession, repo_obj, sleepingReviews)
-            cll()
-            print(f"{'Review buddies'.ljust(30)}{(res[0] * 100):.2f}%\t {(res[1] * 100):.2f}%\t {'+' if res[1]>res[0] else ''}{((res[1]-res[0]) * 100):.2f}%")
-
-            res = calcImpact(dbsession, repo_obj, review_buddies)
-            cll()
-            print(f"{'Ping-pong'.ljust(30)}{(res[0] * 100):.2f}%\t {(res[1] * 100):.2f}%\t {'+' if res[1]>res[0] else ''}{((res[1]-res[0]) * 100):.2f}%")
-
-            res = calcImpact(dbsession, repo_obj, pingPong)
-            cll()
-            print(f"{'Missing PR description'.ljust(30)}{(res[0] * 100):.2f}%\t {(res[1] * 100):.2f}%\t {'+' if res[1]>res[0] else ''}{((res[1]-res[0]) * 100):.2f}%")
-
-            res = calcImpact(dbsession, repo_obj, largeChangesets)
-            cll()
-            print(f"{'Large changesets'.ljust(30)}{(res[0] * 100):.2f}%\t {(res[1] * 100):.2f}%\t {'+' if res[1]>res[0] else ''}{((res[1]-res[0]) * 100):.2f}%")
-
-            res = calcImpact(dbsession, repo_obj, union, [lackOfCodeReview, sleepingReviews, review_buddies, pingPong])
-            cll()
-            print(f"{'One of review related'.ljust(30)}{(res[0] * 100):.2f}%\t {(res[1] * 100):.2f}%\t {'+' if res[1]>res[0] else ''}{((res[1]-res[0]) * 100):.2f}%")
-
-            res = calcImpact(dbsession, repo_obj, intersection,
-                             [lackOfCodeReview, sleepingReviews, review_buddies, pingPong])
-            cll()
-            print(
-                f"{'All of review related'.ljust(30)}{(res[0] * 100):.2f}%\t {(res[1] * 100):.2f}%\t {'+' if res[1] > res[0] else ''}{((res[1] - res[0]) * 100):.2f}%")
-        dbsession.close()
+                 [lack_of_review, missing_description, large_changesets, sleeping_reviews, review_buddies, ping_pong])
     else:
         print("Can't connect to db")

@@ -124,15 +124,3 @@ class FileChange(Base):
 
     def __str__(self) -> str:
         return str(vars(self))
-
-
-# noinspection SpellCheckingInspection
-class IssueForBug(Base):
-    __tablename__ = "issue_for_bug"
-    id = Column(Integer, primary_key=True)
-    number = Column(Integer)
-    repo_id = Column(Integer, ForeignKey('repo.id'))
-    repo = relationship('Repository', foreign_keys=repo_id)
-
-    def __str__(self) -> str:
-        return str(vars(self))

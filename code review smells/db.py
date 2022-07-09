@@ -18,5 +18,5 @@ def prepare(connection_string):
     return True
 
 
-def getSession():
+def get_session():
     return Session()
