@@ -27,9 +27,7 @@ projects={project1},{project2}
 gh_keys={token1},{token2}
 csv_path={Path to apachejit_total.csv}
 ```
-<details>
-<summary>List of proper project values</summary>
-Analysis can be performed for:
+where projects accepts values:
 - apache/ignite
 - apache/hadoop-mapreduce
 - apache/groovy
@@ -45,7 +43,6 @@ Analysis can be performed for:
 - apache/hadoop-hdfs
 - apache/hadoop
 - apache/hive
-</details>
 
 eg.
 ```
