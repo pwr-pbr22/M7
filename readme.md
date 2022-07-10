@@ -1,5 +1,5 @@
 # Prediction of software defects based on code review smells and metrics for pull requests
-Research conducted as part of the _Research and Development Project in Software Engineering_ course at [Wrocław University of Science and Technology](https://pwr.edu.pl/en/) by:
+Research conducted as part of the _Research and Development Project in Software Engineering_ course (led by [Lech Madeyski](https://madeyski.e-informatyka.pl/)) at [Wrocław University of Science and Technology](https://pwr.edu.pl/en/). Research team:
 - Krzysztof Baciejowski ([ORCID](https://orcid.org/0000-0001-9572-1625?lang=en))
 - Damian Garbala
 - Szymon Żmijewski
